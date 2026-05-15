@@ -1,9 +1,21 @@
+from typing import Literal
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AgentMode = Literal["full", "docs_only"]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Operating mode:
+    #   - "full"       : everything; sidecar to a real CertMate instance.
+    #                    Live tools + write commands with confirm + admin.
+    #   - "docs_only"  : public-facing chat over the CertMate documentation.
+    #                    No CertMate API connection, only docs_search + help.
+    #                    Used for agent.certmate.org-style deployments.
+    agent_mode: AgentMode = "full"
 
     lmstudio_url: str = "http://100.66.12.82:1234/v1"
     lmstudio_chat_model: str = "google/gemma-4-e2b"
@@ -19,6 +31,10 @@ class Settings(BaseSettings):
     agent_port: int = 8765
     agent_db_path: str = "./agent.db"
     agent_index_path: str = "./docs_index/index.pkl"
+    # Optional: when set, the agent downloads the index from this URL on
+    # boot if the local file is missing. Used by the docs_only deployment
+    # on Fly.io to pick up the GH Actions release artifact at cold start.
+    agent_index_bootstrap_url: str = ""
     agent_cors_origins: str = "http://localhost:8000"
 
     agent_log_level: str = "INFO"
@@ -70,6 +86,10 @@ class Settings(BaseSettings):
     @property
     def fallback_enabled(self) -> bool:
         return bool(self.openrouter_api_key)
+
+    @property
+    def is_docs_only(self) -> bool:
+        return self.agent_mode == "docs_only"
 
 
 settings = Settings()

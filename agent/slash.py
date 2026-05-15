@@ -42,6 +42,9 @@ class SlashCommand:
     usage: str
     aliases: list[str] = field(default_factory=list)
     admin_only: bool = False
+    # If True, the command requires a live CertMate API connection and is
+    # therefore unavailable in docs_only mode.
+    requires_certmate: bool = True
 
 
 _COMMANDS: dict[str, SlashCommand] = {}
@@ -178,11 +181,19 @@ async def _h_help(_argv: list[str], is_admin: bool = False) -> AsyncGenerator[di
     for cmd in list_commands():
         if cmd.admin_only and not is_admin:
             continue
+        if settings.is_docs_only and cmd.requires_certmate:
+            continue
         aliases = f" _(also: {', '.join('/' + a for a in cmd.aliases)})_" if cmd.aliases else ""
         tag = " _(admin)_" if cmd.admin_only else ""
         lines.append(f"- `{cmd.usage}` — {cmd.summary}{tag}{aliases}")
     lines.append("")
-    lines.append("Type a free-form question to talk to the LLM instead.")
+    if settings.is_docs_only:
+        lines.append(
+            "_Mode: **docs_only** — this instance has no live CertMate connection. "
+            "Ask questions about CertMate and its docs._"
+        )
+    else:
+        lines.append("Type a free-form question to talk to the LLM instead.")
     yield _emit_message("\n".join(lines))
     yield _emit_done()
 
@@ -493,21 +504,22 @@ async def _h_docs(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[di
 
 # ---------- registration ----------
 
-_register(SlashCommand("help", _h_help, "List slash commands.", "/help", ["?"]))
+_register(SlashCommand("help", _h_help, "List slash commands.", "/help",
+                       aliases=["?"], requires_certmate=False))
 _register(SlashCommand("health", _h_health, "CertMate service health.", "/health"))
 _register(SlashCommand("status", _h_status,
                        "Overview: health + cert count + expiring within 30d.",
-                       "/status", ["overview"]))
+                       "/status", aliases=["overview"]))
 _register(SlashCommand("expiring", _h_expiring,
                        "Certs expiring within N days (default 30).",
                        "/expiring [days]"))
 _register(SlashCommand("list", _h_list, "All managed certificates.",
-                       "/list", ["certs", "ls"]))
+                       "/list", aliases=["certs", "ls"]))
 _register(SlashCommand("cert", _h_cert, "Details for one certificate.",
                        "/cert <domain>"))
 _register(SlashCommand("providers", _h_providers,
                        "Supported and configured DNS providers.",
-                       "/providers", ["dns"]))
+                       "/providers", aliases=["dns"]))
 _register(SlashCommand("accounts", _h_accounts,
                        "Configured DNS accounts; optionally filtered by provider.",
                        "/accounts [provider]"))
@@ -524,11 +536,13 @@ _register(SlashCommand("cache-clear", _h_cache_clear,
 _register(SlashCommand("docs", _h_docs,
                        "Search the CertMate documentation (RAG over docs).",
                        "/docs <query>",
-                       aliases=["ask"]))
+                       aliases=["ask"],
+                       requires_certmate=False))
 _register(SlashCommand("reindex", _h_reindex,
                        "Rebuild the docs index (admin only; requires AGENT_ADMIN_TOKEN).",
                        "/reindex [repo] [branch]",
-                       admin_only=True))
+                       admin_only=True,
+                       requires_certmate=False))
 
 
 # ---------- entrypoint used by chat_loop ----------
@@ -570,15 +584,32 @@ async def dispatch(
             )
             yield _emit_done()
         return _unknown()
+    if settings.is_docs_only and cmd.requires_certmate:
+        async def _disabled() -> AsyncGenerator[dict[str, Any], None]:
+            yield _emit_error(
+                f"`/{name}` is not available in docs_only mode "
+                "(no CertMate connection). Try `/docs <question>` or `/help`."
+            )
+            yield _emit_done()
+        return _disabled()
     return cmd.handler(argv, is_admin)
 
 
-# Sanity: every command we reference points to an existing tool (where applicable)
-_REFERENCED_TOOLS = {
+# Sanity: every tool we reference here must exist in REGISTRY *for the
+# current mode*. In docs_only the CertMate-coupled tools are absent on
+# purpose, so we only require docs_search.
+import logging as _logging
+_log_slash = _logging.getLogger(__name__)
+_REFERENCED_TOOLS_FULL = {
     "system_health", "system_overview", "cert_list", "cert_get",
     "dns_providers_info", "dns_accounts_list", "backups_list",
     "cert_renew", "cert_deploy", "cache_clear", "docs_search",
 }
-_missing = _REFERENCED_TOOLS - set(REGISTRY)
+_REFERENCED_TOOLS_DOCS_ONLY = {"docs_search"}
+_required = (
+    _REFERENCED_TOOLS_DOCS_ONLY if settings.is_docs_only else _REFERENCED_TOOLS_FULL
+)
+_missing = _required - set(REGISTRY)
 if _missing:  # pragma: no cover - dev guard
-    raise RuntimeError(f"slash.py references missing tools: {_missing}")
+    _log_slash.warning("slash.py references missing tools for mode=%s: %s",
+                       settings.agent_mode, _missing)

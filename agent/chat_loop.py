@@ -23,6 +23,8 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from contextlib import asynccontextmanager, nullcontext
+
 from . import slash
 from .certmate_client import CertMateClient, CertMateError
 from .config import settings
@@ -31,7 +33,7 @@ from .llm import ChainError, ChatLLM
 from .llm.lmstudio import LMStudioError
 from .tools import REGISTRY, ToolKind, get_tool, openai_tool_schemas
 
-SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT_FULL = """\
 You are CertMate-Agent: a focused, terse assistant embedded in CertMate, an SSL certificate management system.
 
 Capabilities:
@@ -51,6 +53,26 @@ Output rules:
 - Be concise. Bullet lists for >3 items. No filler.
 - If a tool errors, explain briefly what went wrong and what the user can do.
 """
+
+_SYSTEM_PROMPT_DOCS_ONLY = """\
+You are CertMate-Agent (docs mode): a focused, terse assistant grounded in the CertMate documentation.
+
+This instance is PUBLIC and has NO connection to a live CertMate API. You can answer:
+- What CertMate is, how it works, which DNS providers it supports.
+- How to configure features (Cloudflare, Route53, deploy hooks, wildcard, DNS-01).
+- ACME / Let's Encrypt / CNAME delegation concepts that the docs cover.
+
+Rules:
+- Always call `docs_search` first for any question about CertMate features, configuration, or concepts. Never guess.
+- If the user asks about THEIR specific certificates, instances, or live state, explain you cannot see live state and point them to install/run their own CertMate instance.
+- Cite source filenames in parentheses after a claim, e.g. "(docs/dns-providers.md)".
+- Be concise. Bullet lists for >3 items. No filler.
+- Never invent CertMate features that the docs don't mention.
+"""
+
+
+def _system_prompt() -> str:
+    return _SYSTEM_PROMPT_DOCS_ONLY if settings.is_docs_only else _SYSTEM_PROMPT_FULL
 
 
 def _preview(value: Any, max_chars: int = 400) -> str:
@@ -113,15 +135,16 @@ async def run_turn(
         history = loaded
     else:
         history = list(history or [])
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt()}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
     final_assistant_text: str | None = None
 
     tools_schema = openai_tool_schemas()
+    certmate_cm = nullcontext(None) if settings.is_docs_only else CertMateClient()
 
-    async with ChatLLM() as llm, CertMateClient() as certmate:
+    async with ChatLLM() as llm, certmate_cm as certmate:
         for iteration in range(settings.agent_max_tool_iterations):
             yield {"event": "status", "data": {"message": f"thinking (iter {iteration + 1})"}}
 

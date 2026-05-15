@@ -1,0 +1,84 @@
+name: deploy-fly
+
+# Deploys the docs_only edition to Fly.io.
+#
+# Triggers:
+#   - push to main on relevant paths (continuous deploy)
+#   - manual via the Actions tab
+#   - after rebuild-docs-index completes (so the new index is live)
+#
+# Required secrets:
+#   FLY_API_TOKEN   — `fly tokens create deploy -x 99999h` once, then store
+#
+# The Fly app pulls AGENT_INDEX_BOOTSTRAP_URL from fly.toml on cold start
+# and downloads the latest release artifact. No image rebuild needed when
+# only the index changes — Fly's auto_stop_machines + bootstrap on first
+# request picks it up.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "widget/**"
+      - "docker/Dockerfile"
+      - "pyproject.toml"
+      - "fly.toml"
+      - ".github/workflows/deploy-fly.yml"
+  workflow_dispatch: {}
+  workflow_run:
+    workflows: ["rebuild-docs-index"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-fly
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Skip if upstream workflow (rebuild-docs-index) didn't succeed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Restart Fly machines (workflow_run = index updated)
+        if: github.event_name == 'workflow_run'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        # When only the index changed, no need to rebuild the image.
+        # Bouncing machines forces a cold start, which triggers
+        # maybe_bootstrap_index() to pull the new release artifact.
+        run: |
+          fly machine list --json | jq -r '.[].id' | while read -r id; do
+            fly machine restart "$id"
+          done
+
+      - name: Deploy image (code/config changed)
+        if: github.event_name != 'workflow_run'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          fly deploy --remote-only --strategy=immediate
+
+      - name: Summary
+        if: always()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          {
+            echo "## deploy-fly"
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              echo "Triggered by rebuild-docs-index — restarted machines to pull new index."
+            else
+              echo "Deployed image from \`${{ github.sha }}\`."
+            fi
+            echo ""
+            fly status 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"

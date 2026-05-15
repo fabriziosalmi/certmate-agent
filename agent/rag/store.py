@@ -111,11 +111,27 @@ class RagStore:
             self._loaded_at = time.time()
             log.info("RAG index loaded: %d chunks (%s)",
                      len(self._index.chunks), self._index.embed_model)
+            self._warn_if_model_mismatch()
             return True
         except Exception as e:  # pragma: no cover - defensive
             log.error("Failed to load RAG index from %s: %s", self.path, e)
             self._index = None
             return False
+
+    def _warn_if_model_mismatch(self) -> None:
+        """If the runtime embed model differs from the index's, cosine
+        similarity over the loaded vectors is meaningless. Surface loudly."""
+        if not self._index:
+            return
+        runtime_model = settings.lmstudio_embed_model
+        if self._index.embed_model and runtime_model and self._index.embed_model != runtime_model:
+            log.error(
+                "RAG embed model MISMATCH: index built with '%s' but runtime "
+                "configured with '%s'. Cosine scores will be wrong. Either "
+                "rebuild the index with %s or change LMSTUDIO_EMBED_MODEL to %s.",
+                self._index.embed_model, runtime_model,
+                runtime_model, self._index.embed_model,
+            )
 
     def reload(self) -> bool:
         """Hot-reload from disk. Called after `/reindex` writes a new file."""

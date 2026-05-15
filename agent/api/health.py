@@ -17,6 +17,7 @@ async def health() -> dict:
 
     out: dict = {
         "agent": "ok",
+        "mode": settings.agent_mode,
         "tools": len(REGISTRY),
         "persist_conversations": settings.agent_persist_conversations,
         "cleanup_interval_s": settings.agent_cleanup_interval_seconds,
@@ -38,14 +39,17 @@ async def health() -> dict:
         else {"enabled": False}
     )
 
-    try:
-        async with CertMateClient() as cm:
-            await cm.system_health()
-            out["certmate"] = {"status": "ok"}
-    except CertMateError as e:
-        out["certmate"] = {"status": "error", "http": e.status, "error": str(e)}
-    except Exception as e:
-        out["certmate"] = {"status": "error", "error": str(e)}
+    if settings.is_docs_only:
+        out["certmate"] = {"status": "disabled", "reason": "docs_only mode"}
+    else:
+        try:
+            async with CertMateClient() as cm:
+                await cm.system_health()
+                out["certmate"] = {"status": "ok"}
+        except CertMateError as e:
+            out["certmate"] = {"status": "error", "http": e.status, "error": str(e)}
+        except Exception as e:
+            out["certmate"] = {"status": "error", "error": str(e)}
 
     return out
 

@@ -16,6 +16,7 @@ from .api import conversations as conversations_api
 from .api import health as health_api
 from .config import settings
 from .db import init_db
+from .rag.bootstrap import maybe_bootstrap_index
 from .scheduler import scheduler_lifespan
 
 logging.basicConfig(
@@ -28,13 +29,19 @@ log = logging.getLogger("certmate-agent")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    log.info("certmate-agent %s starting", __version__)
+    log.info("certmate-agent %s starting (mode=%s)", __version__, settings.agent_mode)
     log.info("LMStudio: %s (chat=%s, embed=%s)",
              settings.lmstudio_url, settings.lmstudio_chat_model, settings.lmstudio_embed_model)
-    log.info("CertMate: %s", settings.certmate_url)
+    if settings.is_docs_only:
+        log.info("docs_only mode: CertMate API disabled, write/admin tools hidden")
+    else:
+        log.info("CertMate: %s", settings.certmate_url)
     if settings.fallback_enabled:
         log.info("Fallback LLM: OpenRouter %s (model=%s)",
                  settings.openrouter_url, settings.openrouter_model)
+    # If a bootstrap URL is configured AND the local index is missing,
+    # download the published artifact before serving traffic.
+    await maybe_bootstrap_index()
     async with scheduler_lifespan():
         yield
 

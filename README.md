@@ -6,6 +6,34 @@ Embedded local LLM (LM Studio over Tailscale by default) + a 1:1 mapping of Cert
 LLM-callable tools. Read tools auto-execute; write tools queue a `pending_action` with a
 human-readable summary and require an explicit confirmation from the UI.
 
+## Operating modes
+
+Set `AGENT_MODE` to choose between:
+
+- **`full`** (default) — sidecar to a real CertMate instance. All tools
+  available: live state reads, write commands with confirm, admin (`/reindex`),
+  RAG over docs. Used for self-hosters running their own CertMate.
+
+- **`docs_only`** — public docs assistant. No CertMate API connection.
+  Only `docs_search` + `/help` + `/docs` available; the LLM's system prompt
+  is also adjusted to tell it there is no live state. Used for
+  agent.certmate.org-style deployments where anyone can ask questions
+  about CertMate features and configuration.
+
+Mode-dependent behavior:
+
+| | `full` | `docs_only` |
+|---|---|---|
+| Tools registered | 23 | 1 (`docs_search`) |
+| Slash commands | all | `/help`, `/docs`, `/ask` |
+| CertMate API client | opened per turn | not opened |
+| `/health.certmate` | live check | `"status": "disabled"` |
+| System prompt | "you can read live state + docs" | "no live state, docs only" |
+| Widget header badge | hidden | `DOCS ONLY` |
+
+The widget discovers the mode by hitting `/health` on mount and adapts
+its autocomplete + intro hint accordingly.
+
 ## Architecture
 
 ```
@@ -193,6 +221,79 @@ Embeddings always stay on the primary (only LM Studio runs the embedding
 model). The widget receives an extra `status` event "served via
 openrouter" when the fallback handled the turn, so you can see it in the
 chat log.
+
+## Public deployment (`docs_only` on Fly.io + weekly index)
+
+Pre-built workflows + manifest ship the public docs assistant
+(`agent.certmate.org`-style) end-to-end:
+
+### 1. Weekly index rebuild — `.github/workflows/rebuild-docs-index.yml`
+
+Runs every Monday 06:00 UTC and on manual trigger. Pulls
+`fabriziosalmi/certmate@main`, chunks + embeds the docs, publishes the
+resulting pickle as a `index-latest` GitHub Release.
+
+Required repo secrets (`Settings → Secrets and variables → Actions`):
+
+| Secret | Example value |
+|---|---|
+| `INDEX_EMBED_URL` | `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1` |
+| `INDEX_EMBED_API_KEY` | Cloudflare API token (Workers AI scope) |
+| `INDEX_EMBED_MODEL` | `@cf/baai/bge-base-en-v1.5` (768-dim) |
+
+OpenAI works too:
+
+| Secret | Example value |
+|---|---|
+| `INDEX_EMBED_URL` | `https://api.openai.com/v1` |
+| `INDEX_EMBED_API_KEY` | `sk-...` |
+| `INDEX_EMBED_MODEL` | `text-embedding-3-small` |
+
+**Important**: the same embedding model must be configured on the runtime
+that serves the index. The store warns loudly if they don't match.
+
+### 2. Fly.io deploy — `fly.toml` + `.github/workflows/deploy-fly.yml`
+
+The Fly app runs `AGENT_MODE=docs_only`, fetches the published index on
+cold start via `AGENT_INDEX_BOOTSTRAP_URL`, and uses Cloudflare Workers
+AI (or OpenRouter) for chat. Setup once:
+
+```bash
+fly apps create certmate-agent              # pick any name
+# Edit fly.toml: replace REPLACE_ME in LMSTUDIO_URL with your CF account id
+fly secrets set LMSTUDIO_API_KEY=<token>    # CF Workers AI token
+fly volumes create certmate_agent_data --size 1 --region fra
+fly deploy                                   # one-shot bootstrap
+```
+
+Get a deploy token for GitHub:
+
+```bash
+fly tokens create deploy -x 99999h
+# paste into repo secret FLY_API_TOKEN
+```
+
+After that, the deploy workflow runs automatically on:
+
+- push to `main` (rebuilds the image)
+- successful `rebuild-docs-index` (just restarts machines so they re-bootstrap the index, no image rebuild)
+- manual dispatch
+
+Point your DNS:
+
+```
+agent.certmate.org → CNAME → <app-name>.fly.dev
+```
+
+Fly handles TLS issuance + renewal — fitting for the CertMate ecosystem.
+
+### Why this split scales
+
+| Layer | Updates when | Cost |
+|---|---|---|
+| Docker image | code/config changes (rare) | 0 |
+| Index artifact | weekly cron or doc push | $0.001/run on OpenAI; free on CF WAI |
+| Fly machine | code change or index refresh | scale-to-zero, ~free under low traffic |
 
 ## Docker
 

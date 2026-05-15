@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Any
 
 from ..certmate_client import CertMateClient
+from ..config import settings
 from ..llm.lmstudio import LMStudioClient
 from ..rag import get_store
 
@@ -46,6 +47,9 @@ class Tool:
     executor: Executor
     summarize: Summarizer | None = None
     aliases: list[str] = field(default_factory=list)
+    # True when this tool needs a live CertMate API connection.
+    # docs_only mode skips registration of tools where this is True.
+    requires_certmate: bool = True
 
     def to_openai_schema(self) -> dict[str, Any]:
         return {
@@ -420,6 +424,7 @@ def _build_registry() -> dict[str, Tool]:
             },
             kind=ToolKind.READ,
             executor=_docs_search,
+            requires_certmate=False,
         ),
 
         # ----- write_safe -----
@@ -558,6 +563,8 @@ def _build_registry() -> dict[str, Tool]:
             summarize=_s_dns_account_delete,
         ),
     ]
+    if settings.is_docs_only:
+        tools = [t for t in tools if not t.requires_certmate]
     return {t.name: t for t in tools}
 
 

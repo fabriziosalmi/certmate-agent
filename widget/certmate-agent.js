@@ -7,8 +7,13 @@
  * No build step. Drop into any page.
  */
 
-const SLASH_COMMANDS = [
+// Commands available in any mode.
+const SLASH_COMMANDS_COMMON = [
   ["/help", "List all commands"],
+  ["/docs", "Search CertMate docs (RAG) (/docs DNS-01)"],
+];
+// Commands that need a live CertMate connection (hidden in docs_only mode).
+const SLASH_COMMANDS_FULL = [
   ["/health", "CertMate service health"],
   ["/status", "Overview + expiring within 30d"],
   ["/expiring", "Certs expiring soon (/expiring 7)"],
@@ -20,7 +25,6 @@ const SLASH_COMMANDS = [
   ["/renew", "Renew cert (confirm) (/renew example.com)"],
   ["/deploy", "Run deploy hook (confirm)"],
   ["/cache-clear", "Clear server cache (confirm)"],
-  ["/docs", "Search CertMate docs (RAG) (/docs DNS-01)"],
   ["/reindex", "Rebuild docs index (admin)"],
 ];
 
@@ -42,9 +46,43 @@ class CertMateAgent extends HTMLElement {
     this.sessionKey = this.getAttribute("session-key") ||
       "certmate-agent:" + (new URL(this.endpoint).host);
     this.sessionId = this.persist ? this._loadOrCreateSession() : null;
+    // Server mode is discovered via /health on mount. Defaults to "full"
+    // so the autocomplete shows everything until we know otherwise.
+    this.serverMode = "full";
     this._render();
     this._addHint();
     if (this.persist) this._restoreHistory();
+    this._discoverMode();
+  }
+
+  async _discoverMode() {
+    try {
+      const r = await fetch(`${this.endpoint}/health`);
+      if (!r.ok) return;
+      const body = await r.json();
+      if (body.mode && body.mode !== this.serverMode) {
+        this.serverMode = body.mode;
+        this._applyMode();
+      }
+    } catch {}
+  }
+
+  _applyMode() {
+    const badge = this._shadow.getElementById("mode-badge");
+    if (badge) {
+      if (this.serverMode === "docs_only") {
+        badge.textContent = "docs only";
+        badge.style.display = "";
+      } else {
+        badge.style.display = "none";
+      }
+    }
+    this._swapHintForMode();
+  }
+
+  _slashCommands() {
+    if (this.serverMode === "docs_only") return SLASH_COMMANDS_COMMON;
+    return [...SLASH_COMMANDS_COMMON, ...SLASH_COMMANDS_FULL];
   }
 
   _loadOrCreateSession() {
@@ -223,6 +261,11 @@ class CertMateAgent extends HTMLElement {
         <div class="header">
           <span class="dot"></span>
           <span>CertMate-Agent</span>
+          <span id="mode-badge"
+                style="display:none;font-size:.7rem;padding:.1rem .4rem;
+                       border-radius:4px;background:rgba(0,0,0,.08);
+                       color:var(--cm-muted);text-transform:uppercase;
+                       letter-spacing:.05em;">docs only</span>
           <span style="flex:1"></span>
           <button id="new-session" type="button" title="Start a fresh session"
                   style="display:none">New session</button>
@@ -263,10 +306,21 @@ class CertMateAgent extends HTMLElement {
   _addHint() {
     const el = document.createElement("div");
     el.className = "hint";
+    el.id = "intro-hint";
     el.innerHTML =
       "Tip: try <code>/status</code>, <code>/expiring 7</code>, " +
       "or <code>/cert example.com</code>. Type <code>/help</code> for all commands.";
     this._logEl.appendChild(el);
+  }
+
+  _swapHintForMode() {
+    const el = this._shadow.getElementById("intro-hint");
+    if (!el) return;
+    if (this.serverMode === "docs_only") {
+      el.innerHTML =
+        "Tip: ask anything about CertMate, e.g. <em>how does DNS-01 work?</em>, " +
+        "<em>which DNS providers are supported?</em>, or <code>/docs deploy hooks</code>.";
+    }
   }
 
   _updateComplete() {
@@ -276,7 +330,7 @@ class CertMateAgent extends HTMLElement {
       return;
     }
     const q = v.slice(1).toLowerCase();
-    const matches = SLASH_COMMANDS.filter(([name]) =>
+    const matches = this._slashCommands().filter(([name]) =>
       name.slice(1).startsWith(q),
     );
     if (matches.length === 0) {
