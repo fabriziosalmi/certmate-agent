@@ -1,23 +1,16 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
+.venv/
 venv/
 .env
-
-# Node
-node_modules/
+.env.local
+*.db
+*.db-journal
+.DS_Store
+.pytest_cache/
+.ruff_cache/
 dist/
 build/
-.eslintcache
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Database
-*.sqlite
-*.sqlite3
-
-# Vite
-*.local
+*.egg-info/

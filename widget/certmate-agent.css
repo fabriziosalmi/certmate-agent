@@ -1,0 +1,24 @@
+certmate-agent {
+  display: block;
+  --cm-fg: #1f2937;
+  --cm-muted: #6b7280;
+  --cm-bg: #ffffff;
+  --cm-border: #e5e7eb;
+  --cm-accent: #2563eb;
+  --cm-warn-bg: #fef3c7;
+  --cm-warn-border: #f59e0b;
+  --cm-danger-bg: #fee2e2;
+  --cm-danger-border: #ef4444;
+  --cm-tool-bg: #f3f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  certmate-agent {
+    --cm-fg: #e5e7eb;
+    --cm-muted: #9ca3af;
+    --cm-bg: #0f172a;
+    --cm-border: #1f2937;
+    --cm-tool-bg: #111827;
+    --cm-warn-bg: #422006;
+    --cm-danger-bg: #450a0a;
+  }
+}
