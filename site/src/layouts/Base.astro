@@ -1,0 +1,147 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Override the OG image (defaults to the CertMate logo). */
+  ogImage?: string;
+  /** Canonical pathname relative to site root, e.g. "/dns-01-explained/". */
+  canonical?: string;
+}
+
+const { title, description, ogImage = "/og-default.png", canonical } = Astro.props;
+const canonicalUrl = canonical
+  ? new URL(canonical, Astro.site).toString()
+  : new URL(Astro.url.pathname, Astro.site).toString();
+const ogUrl = new URL(ogImage, Astro.site).toString();
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="canonical" href={canonicalUrl} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogUrl} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogUrl} />
+
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/certmate-logo.png" />
+    <link rel="apple-touch-icon" href="/certmate-logo.png" />
+
+    <slot name="head" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/">
+          <img src="/certmate-logo.png" alt="" width="26" height="26" />
+          <span>CertMate Agent</span>
+        </a>
+        <nav>
+          <a href="/topics/">Topics</a>
+          <a href="/chat/">Ask the agent</a>
+          <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap content">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <div class="muted">
+          Public docs companion for
+          <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate</a>.
+          Curated content — no AI-generated filler.
+        </div>
+        <div class="muted">
+          <a href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">Source</a>
+          &middot; <a href="/sitemap.xml">Sitemap</a>
+        </div>
+      </div>
+    </footer>
+
+    <style>
+      .site-header {
+        border-bottom: 1px solid var(--border);
+        padding: 18px 0;
+      }
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--fg);
+        border-bottom: none;
+        letter-spacing: -0.01em;
+      }
+      .brand img {
+        border-radius: 7px;
+      }
+      nav {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      nav a {
+        color: var(--fg-muted);
+        border-bottom: none;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      nav a:hover {
+        background: var(--surface);
+        color: var(--fg);
+      }
+
+      .content {
+        padding: 48px 24px 96px;
+        flex: 1;
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border);
+        padding: 24px 0;
+        font-size: 13px;
+      }
+      .footer-inner {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 540px) {
+        .site-header { padding: 14px 0; }
+        .content { padding: 28px 16px 64px; }
+        nav { gap: 0; }
+        nav a { padding: 6px 8px; }
+      }
+    </style>
+  </body>
+</html>

@@ -8,6 +8,9 @@ venv/
 .env.local
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
+node_modules/
 .DS_Store
 .pytest_cache/
 .ruff_cache/

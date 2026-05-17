@@ -1,0 +1,130 @@
+---
+import Base from "../layouts/Base.astro";
+
+const apiEndpoint = "https://api.agent.certmate.org";
+---
+<Base
+  title="CertMate Agent — Conversational docs for SSL certificate management"
+  description="Ask anything about CertMate, ACME / Let's Encrypt, DNS-01 validation, wildcard certificates, and deploy hooks. A focused public docs assistant built on the open-source CertMate project."
+>
+  <Fragment slot="head">
+    <link rel="stylesheet" href={`${apiEndpoint}/widget/certmate-agent.css`} />
+    <script type="module" src={`${apiEndpoint}/widget/certmate-agent.js`} is:inline></script>
+  </Fragment>
+
+  <section class="hero">
+    <h1>The conversational layer for SSL certificate ops.</h1>
+    <p class="lead">
+      <strong>CertMate Agent</strong> answers questions about CertMate — how
+      DNS-01 validation works, which DNS providers are wired in, how deploy
+      hooks ship a renewed certificate to your edge, how wildcard issuance
+      behaves under CNAME delegation. Read the explainers below, or just
+      ask.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn" href="#chat">Ask the agent ↓</a>
+      <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
+        Self-host CertMate →
+      </a>
+    </div>
+  </section>
+
+  <section class="why prose">
+    <h2>Why this exists</h2>
+    <p>
+      CertMate is a self-hosted certificate manager with a small operational
+      surface and a long tail of corner cases (per-provider quirks, alias
+      delegation, deploy-hook contracts, ACME edge behavior). The docs cover
+      them, but reading is slow. This agent searches the docs by meaning,
+      cites the source, and stays grounded — it never invents features.
+    </p>
+    <p>
+      It is built from the same codebase that self-hosters run as a sidecar
+      to their own CertMate instance for live operations (renew, deploy,
+      audit). Here, on the public site, it runs in <code>docs_only</code>
+      mode: no live state, no write actions, just curated knowledge.
+    </p>
+  </section>
+
+  <section id="chat" class="chat-section">
+    <h2>Ask the agent</h2>
+    <p class="muted">
+      Try: <kbd>/docs</kbd> <em>DNS-01 explained</em>, or just type a
+      question.
+    </p>
+    <div class="widget-frame">
+      <certmate-agent endpoint={apiEndpoint} fill></certmate-agent>
+    </div>
+  </section>
+
+  <section class="topics prose">
+    <h2>Curated topics</h2>
+    <p class="muted">
+      Hand-written explainers — no LLM-generated filler. Each cites the
+      CertMate source it's grounded in.
+    </p>
+    <ul class="topic-list">
+      <li>
+        <a href="/topics/what-is-certmate/">What CertMate is (and isn't)</a>
+        <span class="subtle"> · Overview, scope, comparison with certbot / Traefik / Caddy</span>
+      </li>
+      <li>
+        <a href="/topics/dns-01-explained/">ACME DNS-01 challenge, end to end</a>
+        <span class="subtle"> · How Let's Encrypt validates ownership via DNS, where CertMate fits</span>
+      </li>
+      <li>
+        <span class="muted">More topics arriving — written, not generated.</span>
+      </li>
+    </ul>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    padding: 16px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .cta-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+  }
+
+  .why { margin-bottom: 56px; }
+
+  .chat-section { margin: 56px 0; }
+  .widget-frame {
+    height: 560px;
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    background: var(--bg);
+  }
+  .widget-frame certmate-agent { flex: 1; min-width: 0; }
+
+  .topics { margin-top: 56px; }
+  .topic-list {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .topic-list li {
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+  .topic-list a {
+    font-weight: 600;
+    color: var(--fg);
+    border-bottom-color: var(--border-strong);
+  }
+</style>

@@ -43,8 +43,12 @@ primary_region = "fra"           # Frankfurt — change to your closest region
   # --- Storage ---
   AGENT_DB_PATH = "/data/agent.db"
 
-  # --- CORS (allow the static landing on agent.certmate.org) ---
-  AGENT_CORS_ORIGINS = "https://agent.certmate.org,https://certmate.org"
+  # --- CORS (allow the static landing on agent.certmate.org + the
+  # CertMate marketing site) ---
+  # The Astro site published to GitHub Pages lives at agent.certmate.org;
+  # the API published by this Fly app lives at api.agent.certmate.org.
+  # Both belong to the trust boundary.
+  AGENT_CORS_ORIGINS = "https://agent.certmate.org,https://certmate.org,https://www.certmate.org"
 
   # --- Conversation persistence: OFF for public deployment (privacy + scale) ---
   AGENT_PERSIST_CONVERSATIONS = "false"
