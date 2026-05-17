@@ -292,9 +292,19 @@ class CertMateAgent extends HTMLElement {
           padding: 20px 20px 8px;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 14px;
           scroll-behavior: smooth;
         }
+        /* Rhythm: tighten the user→assistant adjacency (same "beat"),
+           keep the assistant→user transition more airy. CSS selector
+           reads adjacent siblings so we don't have to mark anything
+           in markup. */
+        .msg.user + .msg.assistant,
+        .msg.user + .tool,
+        .msg.user + .status { margin-top: -4px; }
+        .msg.assistant + .msg.user,
+        .tool + .msg.user,
+        .confirm + .msg.user { margin-top: 10px; }
         .log::-webkit-scrollbar { width: 10px; }
         .log::-webkit-scrollbar-thumb {
           background: var(--cm-border);
@@ -818,13 +828,13 @@ class CertMateAgent extends HTMLElement {
         }
         .tool .latency:empty { display: none; }
 
-        /* ---------- Send button loading state ---------- */
-        button.primary.loading {
+        /* ---------- Button loading state (shared by primary + danger) ---------- */
+        button.loading {
           color: transparent;
           position: relative;
           cursor: progress;
         }
-        button.primary.loading::after {
+        button.loading::after {
           content: "";
           position: absolute;
           left: 50%; top: 50%;
@@ -835,8 +845,12 @@ class CertMateAgent extends HTMLElement {
           border-top-color: var(--cm-accent-fg);
           animation: cm-spin 720ms linear infinite;
         }
+        button.danger.loading::after {
+          border-color: color-mix(in oklab, #ffffff 35%, transparent);
+          border-top-color: #ffffff;
+        }
         @media (prefers-reduced-motion: reduce) {
-          button.primary.loading::after { animation: none; }
+          button.loading::after { animation: none; }
         }
 
         /* ---------- Citation link styling ---------- */
@@ -1309,21 +1323,45 @@ class CertMateAgent extends HTMLElement {
     const isDestructive = payload.kind === "write_destructive";
     el.className = "confirm" + (isDestructive ? " destructive" : "");
     el.setAttribute("role", "alertdialog");
-    el.setAttribute("aria-label", "Confirm action");
+    el.setAttribute("aria-label", isDestructive ? "Confirm destructive action" : "Confirm action");
+    el.setAttribute("aria-modal", "false");
+    // tabindex=-1 makes the container itself focusable so screen readers
+    // jump to it; aria-live=assertive announces it without waiting for a
+    // polite cycle.
+    el.setAttribute("tabindex", "-1");
+    el.setAttribute("aria-live", "assertive");
+
+    // Tab order: for destructive actions, Cancel is the first focusable
+    // button so a stray Enter doesn't execute. For safe actions the
+    // primary action leads.
+    const cancelBtn = `<button data-act="cancel" type="button">Cancel</button>`;
+    const execBtn = `<button class="${isDestructive ? "danger" : "primary"}" data-act="exec" type="button">${isDestructive ? "Confirm & run" : "Execute"}</button>`;
+    const actions = isDestructive
+      ? `${cancelBtn}${execBtn}`
+      : `${execBtn}${cancelBtn}`;
+
     el.innerHTML = `
       <div class="confirm-label">${isDestructive ? "Destructive action" : "Proposed action"}</div>
       <div class="confirm-summary md">${this._md(payload.summary || "")}</div>
       <details><summary>${this._escape(payload.tool)} arguments</summary><pre>${this._escape(JSON.stringify(payload.args, null, 2))}</pre></details>
-      <div class="confirm-actions">
-        <button class="${isDestructive ? "danger" : "primary"}" data-act="exec">${isDestructive ? "Confirm & run" : "Execute"}</button>
-        <button data-act="cancel">Cancel</button>
-      </div>
+      <div class="confirm-actions">${actions}</div>
     `;
     this._logEl.appendChild(el);
+    this._enhanceAssistantMessage(el);
     this._scroll();
-    el.querySelector('[data-act="exec"]').addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      e.target.textContent = "Running…";
+
+    const execEl = el.querySelector('[data-act="exec"]');
+    const cancelEl = el.querySelector('[data-act="cancel"]');
+
+    // Move keyboard focus to the safe default: Cancel on destructive
+    // actions, Execute on safe ones. Browsers won't scroll the bubble
+    // off-screen here because the card itself is the focus target.
+    setTimeout(() => (isDestructive ? cancelEl : execEl).focus(), 0);
+
+    const runExec = async () => {
+      execEl.disabled = true;
+      execEl.classList.add("loading");
+      execEl.setAttribute("aria-busy", "true");
       try {
         const r = await fetch(`${this.endpoint}/tools/execute`, {
           method: "POST",
@@ -1337,11 +1375,25 @@ class CertMateAgent extends HTMLElement {
         this._addTool(payload.tool, payload.args, String(err), false);
       } finally {
         el.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        execEl.classList.remove("loading");
+        execEl.removeAttribute("aria-busy");
       }
-    });
-    el.querySelector('[data-act="cancel"]').addEventListener("click", () => {
+    };
+    const runCancel = () => {
       el.querySelectorAll("button").forEach((b) => (b.disabled = true));
       el.style.opacity = 0.55;
+    };
+
+    execEl.addEventListener("click", runExec);
+    cancelEl.addEventListener("click", runCancel);
+
+    // Keyboard shortcuts inside the confirm scope. Enter on the focused
+    // button is native — but Esc anywhere on the card should cancel.
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        runCancel();
+      }
     });
   }
 

@@ -15,8 +15,11 @@ certmate-agent {
 
   /* Foreground */
   --cm-fg: #0a0a0a;
-  --cm-fg-muted: #52525b;
-  --cm-fg-subtle: #a1a1aa;
+  --cm-fg-muted: #52525b;       /* 7.5:1 on bg — AA strict for body */
+  --cm-fg-subtle: #71717a;      /* 4.7:1 on bg — bumped from #a1a1aa
+                                   to clear WCAG AA for small body text;
+                                   reserve #a1a1aa-ish tones for hairlines
+                                   and disabled chrome, not text. */
 
   /* Hairlines */
   --cm-border: rgba(0, 0, 0, 0.08);
@@ -53,8 +56,8 @@ certmate-agent {
     --cm-surface-hover: #1d1d20;
 
     --cm-fg: #fafafa;
-    --cm-fg-muted: #a1a1aa;
-    --cm-fg-subtle: #52525b;
+    --cm-fg-muted: #d4d4d8;   /* bumped from #a1a1aa for AA on the dark panel */
+    --cm-fg-subtle: #a1a1aa;  /* used for hairline metadata, not body */
 
     --cm-border: rgba(255, 255, 255, 0.08);
     --cm-border-strong: rgba(255, 255, 255, 0.16);
