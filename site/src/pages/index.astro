@@ -1,0 +1,229 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base
+  title="CertMate — Self-hosted SSL certificate management with DNS-01"
+  description="Free, automated SSL certificates from Let's Encrypt. CertMate runs on your infrastructure, validates via DNS-01 across 23 DNS providers, ships renewals to your edge via deploy hooks. Open source."
+>
+  <section class="hero">
+    <p class="eyebrow">Open source · Self-hosted · DNS-01 validation</p>
+    <h1>Free SSL certificates,<br />automated, on your terms.</h1>
+    <p class="lead">
+      <strong>CertMate</strong> issues and renews Let's Encrypt certificates
+      using DNS-01 validation across 23 DNS providers, then ships the
+      renewed bundle to your edge via deploy hooks. Wildcards, multi-SAN,
+      CNAME delegation, role-scoped API keys — handled.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
+        Get CertMate ↗
+      </a>
+      <a class="btn ghost" href="/topics/">
+        Browse explainers
+      </a>
+    </div>
+
+    <p class="hero-foot subtle">
+      Looks like Caddy or Traefik handled this for you already? They do —
+      until they don't. CertMate is the answer when you need wildcards,
+      cross-cluster cert sync, audited renewals, or DNS-01 on providers
+      the reverse proxy doesn't speak.
+    </p>
+  </section>
+
+  <section class="features">
+    <div class="feature">
+      <h3>23 DNS providers</h3>
+      <p class="muted">
+        Cloudflare, Route 53, Azure, Google, Hetzner, OVH, PowerDNS, Linode,
+        Vultr, Gandi, deSEC via ACME-DNS — and more. First-class plugins,
+        not generic wrappers.
+      </p>
+    </div>
+    <div class="feature">
+      <h3>Wildcards by default</h3>
+      <p class="muted">
+        DNS-01 means <code>*.example.com</code> works without HTTP redirects
+        or port-80 gymnastics. CNAME delegation lets you validate domains
+        whose DNS lives elsewhere.
+      </p>
+    </div>
+    <div class="feature">
+      <h3>Deploy hooks</h3>
+      <p class="muted">
+        On each renewal, CertMate runs your hook: push the new cert to S3,
+        reload nginx, sync to a sibling cluster, page on failure. One
+        contract, run anywhere.
+      </p>
+    </div>
+    <div class="feature">
+      <h3>Scoped API keys</h3>
+      <p class="muted">
+        <code>role=operator</code> + <code>allowed_domains</code> per token.
+        Audit log captures every issue, renew, and deploy with caller
+        identity. Self-hosted, so the keys never leave your network.
+      </p>
+    </div>
+  </section>
+
+  <section class="topics prose" id="topics">
+    <h2>What this site is for</h2>
+    <p>
+      Hand-written explainers covering the parts of certificate management
+      that are easy to get wrong: ACME protocol mechanics, DNS-01
+      validation chains, wildcard issuance, CNAME delegation across
+      providers, deploy-hook contracts. Each piece cites the
+      <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate source</a>
+      it's grounded in. No LLM-generated filler.
+    </p>
+
+    <p class="muted">
+      A public chat companion grounded in the same docs is on the way —
+      lives at <code>api.agent.certmate.org</code> when deployed next
+      sprint. The full conversational layer is already available as a
+      <a href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">sidecar</a>
+      for self-hosters today.
+    </p>
+
+    <ul class="topic-list">
+      <li class="planned">
+        <a href="/topics/what-is-certmate/">What CertMate is (and isn't)</a>
+        <span class="subtle"> · vs certbot, Caddy, Traefik · when each one fits</span>
+      </li>
+      <li class="planned">
+        <a href="/topics/dns-01-explained/">ACME DNS-01, end to end</a>
+        <span class="subtle"> · why DNS validation, what a TXT challenge looks like, where CertMate plugs in</span>
+      </li>
+      <li class="planned">
+        <a href="/topics/wildcard-certificates/">Free wildcard certificates with Let's Encrypt</a>
+        <span class="subtle"> · the only way to get one, walked through</span>
+      </li>
+      <li class="planned">
+        <a href="/topics/cname-delegation/">CNAME delegation for cross-provider validation</a>
+        <span class="subtle"> · validate <code>example.com</code> using a delegated zone</span>
+      </li>
+      <li class="planned">
+        <a href="/topics/deploy-hooks/">Deploy hooks: from renewed cert to live edge</a>
+        <span class="subtle"> · S3, nginx, cluster sync, error semantics</span>
+      </li>
+      <li>
+        <span class="muted">More topics arriving — written, not generated.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="cta-bottom">
+    <div class="cta-box">
+      <h2>Run it on your infrastructure.</h2>
+      <p class="muted">
+        Docker compose, single binary, or Python install. Sensible
+        defaults, no telemetry, no SaaS dependency.
+      </p>
+      <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
+        Install CertMate ↗
+      </a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    margin: 0 0 12px;
+    text-transform: uppercase;
+  }
+  .hero {
+    padding: 20px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .hero h1 {
+    font-size: clamp(2rem, 3.4vw + 1rem, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    margin: 0 0 18px;
+  }
+  .hero h1 br {
+    display: none;
+  }
+  @media (min-width: 720px) {
+    .hero h1 br { display: inline; }
+  }
+  .cta-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+  }
+  .hero-foot {
+    margin-top: 28px;
+    max-width: var(--measure);
+    font-size: 0.95rem;
+  }
+
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    margin: 0 0 64px;
+  }
+  .feature {
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+  .feature h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+  }
+  .feature p { margin: 0; font-size: 14px; }
+
+  .topics { margin-top: 32px; }
+  .topic-list {
+    list-style: none;
+    padding: 0;
+    margin: 24px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .topic-list li {
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+  .topic-list a {
+    font-weight: 600;
+    color: var(--fg);
+    border-bottom-color: var(--border-strong);
+  }
+  .topic-list li.planned a::after {
+    content: " · planned";
+    font-weight: 400;
+    color: var(--fg-subtle);
+    font-size: 0.9em;
+  }
+
+  .cta-bottom {
+    margin: 80px 0 0;
+  }
+  .cta-box {
+    padding: 36px 32px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--panel);
+    text-align: center;
+  }
+  .cta-box h2 {
+    margin: 0 0 8px;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
+  }
+  .cta-box p { margin: 0 0 22px; }
+</style>

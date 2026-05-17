@@ -1,0 +1,130 @@
+name: rebuild-docs-index
+
+# Builds the docs RAG index by pulling CertMate's repo, chunking, embedding,
+# and publishing the resulting pickle as the `index-latest` GitHub Release
+# artifact. The public docs_only deployment fetches this on cold start; the
+# on-prem sidecar can ignore it and use its local `/reindex` instead.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   INDEX_EMBED_URL       e.g. https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1
+#                         (Cloudflare Workers AI exposes an OpenAI-compatible API)
+#                         OR  https://api.openai.com/v1
+#   INDEX_EMBED_API_KEY   the Cloudflare API token (Workers AI scope) or OpenAI key
+#   INDEX_EMBED_MODEL     e.g. @cf/baai/bge-base-en-v1.5   (768-dim, matches embeddinggemma)
+#                         OR  text-embedding-3-small        (1536-dim, also fine)
+#
+# IMPORTANT: the same embedding model must be configured on the runtime that
+# serves the index, otherwise cosine similarities are meaningless. The cold-
+# start bootstrap warns if the index's embed_model does not match runtime.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"           # Monday 06:00 UTC
+  workflow_dispatch: {}            # manual trigger from the Actions tab
+  push:
+    branches: [main]
+    paths:
+      - "agent/rag/**"
+      - ".github/workflows/rebuild-docs-index.yml"
+
+permissions:
+  contents: write                  # required to create/update releases
+
+concurrency:
+  group: rebuild-docs-index
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install agent (editable)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Sanity-check embedding-provider secrets
+        env:
+          INDEX_EMBED_URL: ${{ secrets.INDEX_EMBED_URL }}
+          INDEX_EMBED_API_KEY: ${{ secrets.INDEX_EMBED_API_KEY }}
+          INDEX_EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
+        run: |
+          if [ -z "$INDEX_EMBED_URL" ] || [ -z "$INDEX_EMBED_API_KEY" ] || [ -z "$INDEX_EMBED_MODEL" ]; then
+            echo "::error::Missing required secrets. Set INDEX_EMBED_URL, INDEX_EMBED_API_KEY, INDEX_EMBED_MODEL in repo settings."
+            exit 1
+          fi
+          echo "Using embed model: $INDEX_EMBED_MODEL"
+
+      - name: Build index
+        env:
+          # The indexer reuses the LMStudio* env vars because the embed
+          # endpoint is OpenAI-compatible in both LM Studio and Cloudflare
+          # Workers AI. We just point it at whatever the secrets configure.
+          LMSTUDIO_URL: ${{ secrets.INDEX_EMBED_URL }}
+          LMSTUDIO_API_KEY: ${{ secrets.INDEX_EMBED_API_KEY }}
+          LMSTUDIO_EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
+          # Anything for the chat model — the indexer doesn't call chat.
+          LMSTUDIO_CHAT_MODEL: "unused-in-indexer"
+          AGENT_INDEX_PATH: ./docs_index/index.pkl
+        run: |
+          python -m agent.rag.indexer
+          ls -lh docs_index/index.pkl
+
+      - name: Write build metadata
+        env:
+          EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
+        run: |
+          python - <<'PY'
+          import json, os, pickle, sys, time
+          with open("docs_index/index.pkl", "rb") as f:
+              idx = pickle.load(f)
+          meta = {
+              "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              "commit": os.environ.get("GITHUB_SHA", ""),
+              "actor": os.environ.get("GITHUB_ACTOR", ""),
+              "embed_model": os.environ.get("EMBED_MODEL", "") or idx.embed_model,
+              "repo": idx.repo,
+              "branch": idx.branch,
+              "chunks": len(idx.chunks),
+              "size_bytes": os.path.getsize("docs_index/index.pkl"),
+          }
+          with open("docs_index/build-info.json", "w") as f:
+              json.dump(meta, f, indent=2)
+          print(json.dumps(meta, indent=2))
+          PY
+
+      - name: Publish to `index-latest` release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Remove the previous release (and its tag) so we can re-create
+          # without stale assets. The release tag is intentionally fixed
+          # — consumers pin to "index-latest" rather than versioned tags.
+          gh release delete index-latest --yes --cleanup-tag || true
+          gh release create index-latest \
+            docs_index/index.pkl \
+            docs_index/build-info.json \
+            --title "Docs index (auto-rebuilt $(date -u +%Y-%m-%d))" \
+            --notes "Auto-rebuilt weekly from fabriziosalmi/certmate@main. See build-info.json for embed_model + chunk count."
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## rebuild-docs-index" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f docs_index/build-info.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat docs_index/build-info.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Artifact: \`https://github.com/${{ github.repository }}/releases/download/index-latest/index.pkl\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Build failed before metadata was written." >> "$GITHUB_STEP_SUMMARY"
+          fi

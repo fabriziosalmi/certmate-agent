@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CertMate Agent</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="certmate-logo.png" />
+  <link rel="apple-touch-icon" href="certmate-logo.png" />
+  <link rel="stylesheet" href="certmate-agent.css" />
+  <style>
+    :root {
+      --page-bg: #fafafa;
+      --page-fg: #0a0a0a;
+      --page-muted: #52525b;
+      --page-border: rgba(0, 0, 0, 0.08);
+      --page-kbd-bg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page-bg: #0a0a0a;
+        --page-fg: #fafafa;
+        --page-muted: #a1a1aa;
+        --page-border: rgba(255, 255, 255, 0.08);
+        --page-kbd-bg: #161618;
+      }
+    }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: ui-sans-serif, -apple-system, "Inter", "SF Pro Text",
+        "Segoe UI", system-ui, sans-serif;
+      font-feature-settings: "cv11", "ss01", "ss03", "kern", "calt";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background: var(--page-bg);
+      color: var(--page-fg);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header.topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--page-border);
+      font-size: 13px;
+    }
+    .topbar .logo {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      object-fit: contain;
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+    .topbar h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+    .topbar .sep {
+      width: 1px; height: 18px;
+      background: var(--page-border);
+    }
+    .topbar .meta {
+      color: var(--page-muted);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .topbar kbd {
+      font-family: ui-monospace, "Geist Mono", "JetBrains Mono", "SF Mono", "Menlo", monospace;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--page-kbd-bg);
+      border: 1px solid var(--page-border);
+      color: var(--page-fg);
+      box-shadow: 0 1px 0 var(--page-border);
+    }
+    .topbar .grow { flex: 1; }
+    .topbar a {
+      color: var(--page-muted);
+      text-decoration: none;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background-color 140ms ease, color 140ms ease;
+    }
+    .topbar a:hover { background: var(--page-kbd-bg); color: var(--page-fg); }
+
+    main {
+      min-height: 0;
+      display: flex;
+    }
+    certmate-agent {
+      flex: 1;
+      min-width: 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <img class="logo" src="certmate-logo.png" alt="" aria-hidden="true" />
+    <h1>CertMate Agent</h1>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="meta">
+      Type <kbd>/</kbd> for commands &middot; <kbd>↵</kbd> to send
+    </span>
+    <span class="grow"></span>
+    <a href="https://github.com/fabriziosalmi/certmate" target="_blank" rel="noopener">Docs</a>
+  </header>
+  <main>
+    <certmate-agent fill endpoint="http://127.0.0.1:8770"></certmate-agent>
+  </main>
+  <script type="module" src="certmate-agent.js"></script>
+</body>
+</html>

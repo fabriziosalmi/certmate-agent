@@ -1,0 +1,74 @@
+# Example deployment alongside CertMate.
+#
+# Adjust:
+#   - LMSTUDIO_URL / CERTMATE_URL to your hosts
+#   - CERTMATE_TOKEN to a Bearer token CertMate accepts
+#   - AGENT_ADMIN_TOKEN to enable /reindex (leave empty to disable)
+#
+# Build once, run, then build the docs index with:
+#   docker compose exec certmate-agent python -m agent.rag.indexer
+
+services:
+  certmate-agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: certmate-agent:latest
+    container_name: certmate-agent
+    restart: unless-stopped
+    # On macOS use host.docker.internal for the Tailscale LM Studio host
+    # if it's reachable from the host; on Linux Tailscale is generally
+    # reachable directly from the container's network namespace.
+    environment:
+      # --- LM Studio (OpenAI-compatible) ---
+      LMSTUDIO_URL: "${LMSTUDIO_URL:-http://host.docker.internal:1234/v1}"
+      LMSTUDIO_CHAT_MODEL: "google/gemma-4-e2b"
+      LMSTUDIO_EMBED_MODEL: "text-embedding-embeddinggemma-300m"
+      LMSTUDIO_API_KEY: "lm-studio"
+      LMSTUDIO_TIMEOUT_SECONDS: "120"
+
+      # --- CertMate ---
+      CERTMATE_URL: "http://certmate:8000"
+      CERTMATE_TOKEN: "${CERTMATE_TOKEN:?set CERTMATE_TOKEN in .env}"
+      CERTMATE_TIMEOUT_SECONDS: "30"
+
+      # --- Agent ---
+      AGENT_HOST: "0.0.0.0"
+      AGENT_PORT: "8765"
+      AGENT_DB_PATH: "/data/agent.db"
+      AGENT_INDEX_PATH: "/data/docs_index/index.pkl"
+      AGENT_CORS_ORIGINS: "${AGENT_CORS_ORIGINS:-http://localhost:8000}"
+      AGENT_LOG_LEVEL: "INFO"
+      AGENT_MAX_TOKENS: "2048"
+      AGENT_TEMPERATURE: "0.2"
+
+      # --- Admin (gate /reindex) ---
+      AGENT_ADMIN_TOKEN: "${AGENT_ADMIN_TOKEN:-}"
+
+      # --- Conversation persistence ---
+      AGENT_PERSIST_CONVERSATIONS: "true"
+      AGENT_CONVERSATION_TTL_DAYS: "30"
+
+      # --- Background cleanup (TTL pruning) ---
+      AGENT_CLEANUP_INTERVAL_SECONDS: "3600"
+
+      # --- Optional fallback LLM (OpenRouter). Leave empty to disable. ---
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}"
+      LLM_PRIMARY_FAILURE_THRESHOLD: "3"
+      LLM_PRIMARY_COOLDOWN_SECONDS: "60"
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - certmate-agent-data:/data
+    # Uncomment if your CertMate runs in another compose stack on a
+    # shared network; otherwise the explicit URL above is enough.
+    # networks:
+    #   - certmate-net
+
+volumes:
+  certmate-agent-data:
+
+# networks:
+#   certmate-net:
+#     external: true

@@ -1,0 +1,91 @@
+# Fly.io deployment for the PUBLIC docs_only edition.
+#
+# This is the agent.certmate.org deployment: no CertMate API connection,
+# only docs_search backed by RAG. The Docker image is built from
+# `docker/Dockerfile`; the docs index is downloaded at cold start from
+# the `index-latest` GitHub Release via AGENT_INDEX_BOOTSTRAP_URL.
+#
+# Non-secret env lives in [env] below. Secrets (LLM API keys, admin token
+# if any) MUST be set via `fly secrets set`:
+#
+#   fly secrets set LMSTUDIO_API_KEY=<cf_api_token_or_openrouter_key>
+#
+# Replace `app = "..."` with your Fly app name; create it with
+# `fly apps create certmate-agent` (or any name you prefer).
+
+app = "certmate-agent"
+primary_region = "fra"           # Frankfurt — change to your closest region
+
+[build]
+  dockerfile = "docker/Dockerfile"
+
+[env]
+  # --- Mode ---
+  AGENT_MODE = "docs_only"
+  AGENT_HOST = "0.0.0.0"
+  AGENT_PORT = "8080"
+
+  # --- LLM endpoint ---
+  # Default points to Cloudflare Workers AI (OpenAI-compatible API).
+  # Replace <ACCOUNT_ID> with your Cloudflare account ID. The API key goes
+  # in `fly secrets`, not here.
+  LMSTUDIO_URL = "https://api.cloudflare.com/client/v4/accounts/REPLACE_ME/ai/v1"
+  LMSTUDIO_CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  LMSTUDIO_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
+  LMSTUDIO_TIMEOUT_SECONDS = "60"
+
+  # --- Index bootstrap ---
+  # Fetched on cold start by maybe_bootstrap_index() (agent/rag/bootstrap.py).
+  # Update the repo path if you fork.
+  AGENT_INDEX_BOOTSTRAP_URL = "https://github.com/fabriziosalmi/certmate-agent/releases/download/index-latest/index.pkl"
+  AGENT_INDEX_PATH = "/data/docs_index/index.pkl"
+
+  # --- Storage ---
+  AGENT_DB_PATH = "/data/agent.db"
+
+  # --- CORS (allow the static landing on agent.certmate.org + the
+  # CertMate marketing site) ---
+  # The Astro site published to GitHub Pages lives at agent.certmate.org;
+  # the API published by this Fly app lives at api.agent.certmate.org.
+  # Both belong to the trust boundary.
+  AGENT_CORS_ORIGINS = "https://agent.certmate.org,https://certmate.org,https://www.certmate.org"
+
+  # --- Conversation persistence: OFF for public deployment (privacy + scale) ---
+  AGENT_PERSIST_CONVERSATIONS = "false"
+
+  # --- Cleanup interval ---
+  AGENT_CLEANUP_INTERVAL_SECONDS = "3600"
+
+  # --- LLM behavior ---
+  AGENT_MAX_TOKENS = "1024"
+  AGENT_TEMPERATURE = "0.2"
+  AGENT_LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"   # Fly's free-tier scale-to-zero
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[mounts]
+  source = "certmate_agent_data"
+  destination = "/data"
+  initial_size = "1GB"
