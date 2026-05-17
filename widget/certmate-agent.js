@@ -951,6 +951,7 @@ class CertMateAgent extends HTMLElement {
     }
     this._inputEl.addEventListener("input", () => this._updateComplete());
     this._inputEl.addEventListener("keydown", (e) => this._completeKey(e));
+    this._installKeyboardShortcuts();
     this._inputEl.addEventListener("blur", () => {
       setTimeout(() => this._hideComplete(), 120);
     });
@@ -1013,6 +1014,57 @@ class CertMateAgent extends HTMLElement {
   _hideComplete() {
     this._completeEl.classList.remove("show");
     this._completeIdx = -1;
+  }
+
+  // Global keyboard shortcuts. We listen on the host document so the
+  // user doesn't need to click the widget first — Cmd/Ctrl+K is the
+  // industry default for "open command palette". Esc inside the input
+  // dismisses autocomplete; / from anywhere outside an input focuses
+  // the composer the same way it does in GitHub / Linear.
+  _installKeyboardShortcuts() {
+    this._onGlobalKey = (e) => {
+      const inEditable = e.target && (
+        e.target.matches?.("input, textarea, [contenteditable=''], [contenteditable=true]")
+      );
+      // Cmd+K (mac) / Ctrl+K (others): always focus the composer and
+      // open the slash palette. Works from anywhere on the host page.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        this._openPalette();
+        return;
+      }
+      // Bare "/" outside an editable: focus the composer with a leading
+      // slash so the palette opens immediately. Matches Linear / GitHub.
+      if (!inEditable && e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        this._openPalette({ prefix: "/" });
+      }
+    };
+    document.addEventListener("keydown", this._onGlobalKey);
+  }
+
+  _openPalette({ prefix = "" } = {}) {
+    if (!this._inputEl) return;
+    this._inputEl.focus();
+    if (prefix) {
+      this._inputEl.value = prefix;
+      // Trigger the existing autocomplete pipeline.
+      this._updateComplete();
+    } else if (this._inputEl.value === "") {
+      this._inputEl.value = "/";
+      this._updateComplete();
+    }
+    // Move caret to end so further typing extends naturally.
+    const v = this._inputEl.value;
+    this._inputEl.setSelectionRange(v.length, v.length);
+  }
+
+  disconnectedCallback() {
+    if (this._onGlobalKey) {
+      document.removeEventListener("keydown", this._onGlobalKey);
+      this._onGlobalKey = null;
+    }
+    if (this._abortCtl) this._abortCtl.abort();
   }
 
   _completeKey(e) {
