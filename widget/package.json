@@ -1,0 +1,15 @@
+{
+  "name": "certmate-agent-widget",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Vanilla web component for CertMate Agent. No build step — devDeps only for tests.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "happy-dom": "^15.0.0"
+  }
+}

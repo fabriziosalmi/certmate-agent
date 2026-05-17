@@ -9,12 +9,14 @@ on:
     paths:
       - "agent/**"
       - "tests/**"
+      - "widget/**"
       - "pyproject.toml"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "agent/**"
       - "tests/**"
+      - "widget/**"
       - "pyproject.toml"
       - ".github/workflows/ci.yml"
   workflow_dispatch: {}
@@ -52,3 +54,23 @@ jobs:
 
       - name: Tests
         run: pytest tests -v
+
+  widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: widget/package-lock.json
+
+      - name: Install widget devDeps
+        working-directory: widget
+        run: npm ci
+
+      - name: Vitest
+        working-directory: widget
+        run: npm test
