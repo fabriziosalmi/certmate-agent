@@ -1,0 +1,218 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="Multi-account DNS — production / staging / DR on one CertMate"
+  description="One CertMate instance can hold many DNS credentials per provider, pin each certificate to the account that should manage its validation, and migrate from a single-account config without downtime. Here's the shape and the actual use cases."
+  slug="multi-account-dns"
+  readTime="6 min"
+  source={{ file: "docs/dns-providers.md", section: "Multi-Account Support" }}
+>
+
+<p>
+  In production-grade environments, "your Cloudflare account" is
+  rarely a single account. There's a production account holding the
+  customer-facing zones, a staging account holding ephemeral test
+  zones, sometimes a disaster-recovery account that nobody touches
+  except quarterly. CertMate's multi-account support lets one
+  instance manage credentials for all of them and pin each
+  certificate to the right one.
+</p>
+
+<h2>The config shape</h2>
+
+<p>
+  The DNS section of CertMate's settings is a two-level dict: provider
+  → account id → credentials. A typical configuration looks like
+  this:
+</p>
+
+<pre><code>{`{
+  "dns_provider": "cloudflare",
+  "default_accounts": {
+    "cloudflare": "production",
+    "route53": "main-aws"
+  },
+  "dns_providers": {
+    "cloudflare": {
+      "production": {
+        "name": "Production Environment",
+        "api_token": "***masked***"
+      },
+      "staging": {
+        "name": "Staging Environment",
+        "api_token": "***masked***"
+      }
+    },
+    "route53": {
+      "main-aws": {
+        "name": "Main AWS Account",
+        "access_key_id": "***masked***",
+        "secret_access_key": "***masked***",
+        "region": "us-east-1"
+      }
+    }
+  }
+}`}</code></pre>
+
+<p>
+  <code>default_accounts</code> tells CertMate which account to use
+  when a certificate request specifies a provider but not a specific
+  account. Override it per certificate by passing
+  <code>dns_account_id</code> alongside <code>dns_provider</code>.
+</p>
+
+<h2>Adding and managing accounts via API</h2>
+
+<p>
+  All four CRUD operations are available on
+  <code>/api/dns/&lt;provider&gt;/accounts</code>:
+</p>
+
+<pre><code>{`# Add a new Cloudflare account
+curl -X POST http://localhost:8000/api/dns/cloudflare/accounts \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "account_id": "staging",
+    "name": "Staging Cloudflare",
+    "credentials": { "api_token": "..." }
+  }'
+
+# List all accounts for a provider
+curl http://localhost:8000/api/dns/cloudflare/accounts \\
+  -H "Authorization: Bearer $TOKEN"
+
+# Update an account (e.g. rotate token)
+curl -X PUT http://localhost:8000/api/dns/cloudflare/accounts/staging \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "credentials": { "api_token": "new-token-here" } }'
+
+# Set staging as the default for Cloudflare
+curl -X POST http://localhost:8000/api/dns/cloudflare/default \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "account_id": "staging" }'
+
+# Delete an account
+curl -X DELETE http://localhost:8000/api/dns/cloudflare/accounts/staging \\
+  -H "Authorization: Bearer $TOKEN"`}</code></pre>
+
+<h2>Pinning a certificate to a specific account</h2>
+
+<p>
+  Without a pinned account, CertMate uses the provider's
+  <code>default_accounts</code> entry. To override per-request:
+</p>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/certificates/create \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "domain": "ephemeral-test.staging.example.com",
+    "dns_provider": "cloudflare",
+    "dns_account_id": "staging"
+  }'`}</code></pre>
+
+<p>
+  The certificate metadata stores the pin, so future renewals run
+  through the same account automatically. The audit log records the
+  account id with every issuance and renewal.
+</p>
+
+<h2>Use cases that pay for the complexity</h2>
+
+<h3>Production / staging separation</h3>
+
+<p>
+  The default reason to have multiple accounts. Staging zones get a
+  Cloudflare account with permissions limited to staging-only zones;
+  production gets a separate account with permissions limited to
+  production-only zones. A typo in a staging CertMate config can't
+  modify production DNS — the credentials physically can't reach it.
+</p>
+
+<h3>Per-tenant DNS in a managed-service deployment</h3>
+
+<p>
+  If you operate CertMate as a service for multiple internal teams
+  and each team owns its own DNS zone, each team's credentials go in
+  as a separate account. Combined with CertMate's
+  <code>allowed_domains</code>-scoped API keys (v2.5.5+), team A's
+  API token can only issue certificates against domains in team A's
+  Cloudflare account.
+</p>
+
+<h3>Disaster recovery</h3>
+
+<p>
+  Keep a DR account in a second provider (Route53 + Cloudflare, say)
+  for the same zone. If your primary provider has an outage that
+  affects DNS API availability, you re-pin the affected certificates
+  to the DR account by hitting{" "}
+  <code>/api/certificates/&lt;domain&gt;</code> with a PATCH and
+  CertMate's next renewal cycle uses the new path. This requires the
+  zone to be already loaded on both providers (multi-master DNS); see
+  <a href="/topics/cname-delegation/">CNAME delegation</a> for a way
+  to side-step the multi-master complexity entirely.
+</p>
+
+<h3>Blast-radius shrinking</h3>
+
+<p>
+  Even with one provider and one zone, two accounts is sometimes the
+  right answer. Account A's token has{" "}
+  <em>Zone:DNS:Edit</em> on the apex zone for cert-renewal traffic;
+  account B's token has the same scope but is held by a separate
+  process that never invokes CertMate. If account A's token leaks
+  (CertMate compromise), the attacker can modify DNS records — but
+  account B's records remain unaffected, giving you a clean baseline
+  to compare against during incident response.
+</p>
+
+<h2>Backward compatibility</h2>
+
+<p>
+  An older CertMate config with a single-account DNS block migrates
+  to multi-account format on first use. CertMate writes the existing
+  credentials under an auto-generated{" "}
+  <code>account_id="default"</code> and sets it as the provider's
+  default. No downtime, no manual migration step. New requests that
+  don't specify <code>dns_account_id</code> route to "default" and
+  keep working.
+</p>
+
+<h2>What's NOT in the multi-account contract</h2>
+
+<ul>
+  <li>
+    <strong>No automatic failover.</strong> If account A is down,
+    CertMate doesn't auto-retry against account B — that's a routing
+    decision, not a credential-store decision, and the right place to
+    solve it is at the request layer (a wrapper that retries with a
+    different <code>dns_account_id</code>) or at the DNS layer
+    (CNAME delegation).
+  </li>
+  <li>
+    <strong>No per-account rate limit tracking.</strong> If you hit a
+    DNS provider's API rate limit on one account, switching to another
+    account doesn't help — you've hit the cap. CertMate's per-provider
+    propagation timings are tuned conservatively to avoid this.
+  </li>
+  <li>
+    <strong>No credential rotation scheduling.</strong> CertMate
+    doesn't rotate your DNS API tokens for you. Rotating
+    Cloudflare/AWS/Azure tokens is your operator workflow; CertMate
+    just stores whatever you upload.
+  </li>
+</ul>
+
+<p>
+  When you're done with multi-account, the next operational concern
+  is usually <a href="/topics/auto-renew-and-rotation/">auto-renewal
+  and key rotation</a> — the long-running discipline of keeping
+  certificates valid without anyone watching.
+</p>
+
+</Topic>

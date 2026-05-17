@@ -21,10 +21,14 @@ const { title, description, slug, readTime, source } = Astro.props;
 // site/src/pages/topics/index.astro `topics` array.
 const order = [
   "what-is-certmate",
+  "from-zero-to-cert",
   "dns-01-explained",
   "wildcard-certificates",
   "cname-delegation",
+  "multi-account-dns",
   "deploy-hooks",
+  "auto-renew-and-rotation",
+  "audit-and-compliance",
 ];
 const i = order.indexOf(slug);
 const prev = i > 0 ? order[i - 1] : null;

@@ -1,0 +1,230 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="From zero to your first free SSL certificate in 15 minutes"
+  description="A tutorial that gets you from an empty Docker host to a fully-issued Let's Encrypt wildcard certificate via CertMate + Cloudflare. Real commands, no hand-waving. Skip the intro if you already have CertMate running."
+  slug="from-zero-to-cert"
+  readTime="9 min"
+  source={{ file: "README.md", section: "Quick Start with Docker" }}
+>
+
+<p>
+  This is the "just show me the commands" walkthrough. No theory — we
+  already have <a href="/topics/dns-01-explained/">a separate page</a>
+  for that. The goal is a working{" "}
+  <code>*.example.com</code> wildcard certificate signed by Let's
+  Encrypt, with auto-renewal scheduled, in under fifteen minutes of
+  wall-clock time.
+</p>
+
+<p>
+  What you need before starting:
+</p>
+
+<ul>
+  <li>A Docker host with <code>docker compose</code> (a $5/month VPS works).</li>
+  <li>A domain whose DNS is on Cloudflare (we use Cloudflare for the
+  walkthrough because its free tier covers everyone; the same shape
+  works for Route53, Azure, Google, Hetzner — see
+  <a href="/topics/cname-delegation/">delegation</a> if your DNS lives
+  elsewhere).</li>
+  <li>Five minutes to create a Cloudflare API token.</li>
+</ul>
+
+<h2>1. Create a scoped Cloudflare API token</h2>
+
+<p>
+  Don't use a Global API Key. Go to <em>My Profile → API Tokens →
+  Create Token → Edit zone DNS</em>. Restrict it to the specific zone
+  you'll issue against. The token needs:
+</p>
+
+<ul>
+  <li>Zone &rarr; DNS &rarr; <strong>Edit</strong> on
+    <code>example.com</code></li>
+  <li>Zone &rarr; Zone &rarr; <strong>Read</strong> on
+    <code>example.com</code></li>
+</ul>
+
+<p>
+  Copy the token. You'll see it once. Treat it like a password.
+</p>
+
+<h2>2. Boot CertMate</h2>
+
+<pre><code>{`mkdir certmate && cd certmate
+
+# Pull the docker-compose example
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/certmate/main/docker-compose.yml \\
+  -o docker-compose.yml
+
+# Generate a long random bearer token CertMate will accept for its
+# own REST API. Save this — you'll use it below.
+openssl rand -hex 32 > api-bearer-token
+echo "API_BEARER_TOKEN=$(cat api-bearer-token)" > .env
+
+# Boot
+docker compose up -d
+docker compose logs -f certmate    # wait for "Listening on 0.0.0.0:8000"`}</code></pre>
+
+<p>
+  CertMate is now serving on <code>http://localhost:8000</code>. In
+  production you'd put a reverse proxy in front; for the tutorial we
+  hit it directly.
+</p>
+
+<h2>3. Configure the Cloudflare account</h2>
+
+<p>
+  Two ways to do this: the web UI at <code>http://localhost:8000</code>
+  → <em>Settings → DNS Providers</em>, or the REST API. We'll use the
+  REST API because that's what you'll script against later.
+</p>
+
+<pre><code>{`export TOKEN=$(cat api-bearer-token)
+
+curl -X POST http://localhost:8000/api/dns/cloudflare/accounts \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "account_id": "production",
+    "name": "Production Cloudflare",
+    "credentials": {
+      "api_token": "PASTE_YOUR_CLOUDFLARE_TOKEN_HERE"
+    }
+  }'`}</code></pre>
+
+<p>
+  The response is <code>201</code> with the account metadata. The
+  Cloudflare token is now stored on disk under the CertMate data
+  volume, mode 600, accessible only by the certmate process user.
+</p>
+
+<h2>4. Issue the certificate</h2>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/certificates/create \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "domain": "example.com",
+    "san_domains": ["*.example.com"],
+    "dns_provider": "cloudflare",
+    "auto_renew": true
+  }'`}</code></pre>
+
+<p>
+  This kicks off the DNS-01 dance described in
+  <a href="/topics/dns-01-explained/">that other page</a>. CertMate
+  writes a TXT record at{" "}
+  <code>_acme-challenge.example.com</code>, waits for propagation
+  (Cloudflare is fast — usually 5-10 seconds), tells Let's Encrypt
+  to validate, retrieves the certificate, and cleans up the TXT
+  record. End-to-end, around 30-90 seconds for a first issuance.
+</p>
+
+<p>
+  The response when it finishes:
+</p>
+
+<pre><code>{`{
+  "domain": "example.com",
+  "status": "issued",
+  "expiry_date": "2027-08-15T12:34:56Z",
+  "days_until_expiry": 90,
+  "cert_path": "/app/certificates/example.com/cert.pem",
+  "san_domains": ["*.example.com"]
+}`}</code></pre>
+
+<h2>5. Verify the certificate</h2>
+
+<pre><code>{`# Pull the cert bytes out of the container
+docker compose exec certmate \\
+  cat /app/certificates/example.com/fullchain.pem > fullchain.pem
+
+# Read the SAN list
+openssl x509 -in fullchain.pem -noout -text \\
+  | grep -A 1 "Subject Alternative Name"
+# Should print:
+#   Subject Alternative Name:
+#     DNS:example.com, DNS:*.example.com
+
+# Read the expiry
+openssl x509 -in fullchain.pem -noout -enddate`}</code></pre>
+
+<h2>6. Wire auto-renewal (you already did)</h2>
+
+<p>
+  You set <code>auto_renew: true</code> in step 4, so there's nothing
+  else to do. CertMate's scheduler wakes every few hours, picks up
+  any certificate within 30 days of expiry, runs the DNS-01 dance
+  again (same SAN list, new serial), and atomically swaps the files
+  on disk.
+</p>
+
+<p>
+  To confirm:
+</p>
+
+<pre><code>{`curl -s http://localhost:8000/api/certificates/example.com \\
+  -H "Authorization: Bearer $TOKEN" \\
+  | jq '{ auto_renew, renewal_threshold_days, days_until_expiry }'
+
+# {
+#   "auto_renew": true,
+#   "renewal_threshold_days": 30,
+#   "days_until_expiry": 90
+# }`}</code></pre>
+
+<h2>7. (Optional but recommended) Wire a deploy hook</h2>
+
+<p>
+  A certificate that nobody reads doesn't help. The minimal global
+  hook reloads nginx after every renewal:
+</p>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/deploy/config \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "deploy_hooks": {
+      "enabled": true,
+      "global_hooks": [
+        {
+          "id": "nginx-reload",
+          "name": "Reload nginx after cert change",
+          "command": "/usr/sbin/nginx -s reload",
+          "enabled": true,
+          "timeout": 30,
+          "on_events": ["created", "renewed"]
+        }
+      ],
+      "domain_hooks": {}
+    }
+  }'`}</code></pre>
+
+<p>
+  See the <a href="/topics/deploy-hooks/">deploy hooks page</a> for
+  the recipe catalogue (scp+reload, S3 push, PagerDuty on revocation).
+</p>
+
+<h2>What you have now</h2>
+
+<ul>
+  <li>A wildcard Let's Encrypt certificate covering
+    <code>example.com</code> and every <code>*.example.com</code>
+    subdomain.</li>
+  <li>Auto-renewal scheduled, fires within 30 days of expiry.</li>
+  <li>A deploy hook that reloads nginx whenever a new cert lands.</li>
+  <li>A REST API you can script against, and a web UI for the operators
+    who'd rather click.</li>
+  <li>An audit log writing one row per issuance, renewal, and hook
+    firing (<a href="/topics/audit-and-compliance/">see audit</a>).</li>
+</ul>
+
+<p>
+  Total elapsed time, assuming you typed slowly and read the prompts:
+  about twelve minutes.
+</p>
+
+</Topic>

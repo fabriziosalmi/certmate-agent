@@ -1,0 +1,209 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="Auto-renewal and key rotation — the long game"
+  description="A certificate is a 90-day commitment, every 90 days, forever. CertMate's scheduler handles the renewal arithmetic, but the operational discipline around it — monitoring failures, rotating keys, surviving a DNS API outage — is yours. Here's the contract."
+  slug="auto-renew-and-rotation"
+  readTime="6 min"
+  source={{ file: "docs/architecture.md", section: "Renewal" }}
+>
+
+<p>
+  Let's Encrypt certificates are valid for 90 days. The community
+  consensus, baked into every ACME client, is to renew at 60 days —
+  giving you a 30-day buffer before expiry to notice and fix a broken
+  renewal. CertMate follows that consensus. The interesting questions
+  aren't "when does it renew" but "what happens when it doesn't, and
+  how do you know."
+</p>
+
+<h2>The scheduler</h2>
+
+<p>
+  CertMate's background scheduler runs an <code>APScheduler</code>
+  job. Every certificate has a per-record{" "}
+  <code>renewal_threshold_days</code> (default 30, override per cert).
+  The scheduler wakes regularly — frequently enough that a freshly
+  expiring certificate is picked up within hours, not days — walks the
+  certificate list, and for each one whose{" "}
+  <code>days_until_expiry &lt;= renewal_threshold_days</code> AND
+  <code>auto_renew == true</code>, fires a renewal.
+</p>
+
+<p>
+  Renewals always preserve the shape that was in effect at creation
+  time: certbot persists <code>--key-type</code>,
+  <code>--rsa-key-size</code> and <code>--elliptic-curve</code> into
+  its own <code>renewal/&lt;domain&gt;.conf</code> during the first
+  issuance, and <code>certbot renew --cert-name &lt;domain&gt;</code>
+  reuses those values automatically. You don't have to remember
+  whether you originally asked for RSA 4096 or ECDSA P-256; certbot
+  does.
+</p>
+
+<h2>The per-certificate knobs</h2>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Default</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>auto_renew</code></td><td><code>true</code></td><td>Master switch per certificate.</td></tr>
+    <tr><td><code>renewal_threshold_days</code></td><td><code>30</code></td><td>Renew when expiry is within N days. Some operators set this lower (14) for low-traffic certs to minimize unnecessary issuance; some set it higher (45) when the deploy hook is heavy.</td></tr>
+    <tr><td><code>dns_provider</code> + <code>dns_account_id</code></td><td>at-creation values</td><td>Renewals use the same DNS path that issued the cert. Switch providers by PATCHing the record before the next renewal window.</td></tr>
+  </tbody>
+</table>
+
+<h2>Force a renewal</h2>
+
+<p>
+  If you need a renewal now — most commonly because a key compromise
+  was suspected, or because a deploy hook bug means the live cert is
+  out of sync with the on-disk cert — POST to the per-cert renew
+  endpoint:
+</p>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/certificates/example.com/renew \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "force": true }'`}</code></pre>
+
+<p>
+  Without <code>force</code>, CertMate refuses to renew a certificate
+  whose expiry is still far enough away — Let's Encrypt has rate
+  limits (50 certs / domain / week, 5 duplicates / week) and a renewal
+  loop bug is one of the few ways to hit them.
+</p>
+
+<h2>Key rotation: same name, new private key</h2>
+
+<p>
+  Every renewal in CertMate is what certbot calls a "true renewal" —
+  it generates a fresh private key, builds a new CSR, and gets a new
+  certificate from the CA. The certificate's serial number changes,
+  the public key changes, the private key changes. The CN and SAN
+  list don't.
+</p>
+
+<p>
+  This means you don't need a separate "rotate the key" workflow. You
+  rotate the key by forcing a renewal:
+</p>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/certificates/example.com/renew \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -d '{ "force": true, "reason": "scheduled-key-rotation" }'`}</code></pre>
+
+<p>
+  The <code>reason</code> field lands in the audit log alongside the
+  new serial number, which is helpful when an auditor asks "when was
+  the key for this cert last rotated."
+</p>
+
+<h2>When auto-renewal fails</h2>
+
+<p>
+  The four failure modes you'll actually see, in rough order of
+  frequency:
+</p>
+
+<h3>DNS API credential expired or rotated</h3>
+
+<p>
+  Someone rotated the Cloudflare token in the Cloudflare UI without
+  updating CertMate. The next renewal attempt returns 401 from
+  Cloudflare's API. CertMate writes a failed audit row with the
+  upstream message and stops retrying for an exponential back-off
+  window.
+</p>
+
+<p>
+  The <em>only</em> way you notice this in time is by watching the
+  audit log or wiring a deploy hook on a synthetic{" "}
+  <code>revoked</code> event. CertMate is honest about this — the
+  v2.5.5 release notes call out audit log monitoring as the
+  operator's responsibility.
+</p>
+
+<h3>CAA record drift</h3>
+
+<p>
+  Someone added a CAA record that excludes Let's Encrypt. Renewal
+  worked last week. This week, it doesn't. CertMate surfaces the CA's
+  exact error message in the audit log — the words "CAA record
+  prevents issuance" are unambiguous enough that the fix is obvious.
+</p>
+
+<h3>Let's Encrypt rate limit</h3>
+
+<p>
+  Usually a sign of a renewal loop, not legitimate traffic. The audit
+  log will show many failed renewals for the same domain in a short
+  window. Stop the loop, wait out the week-long rate-limit window,
+  and configure stricter renewal thresholds going forward.
+</p>
+
+<h3>DNS provider outage</h3>
+
+<p>
+  Rare but real. CertMate's behavior is to retry with the back-off
+  schedule baked into the certbot plugin (typically 3 attempts over
+  a few minutes). If the outage outlasts that, the renewal fails and
+  is retried on the next scheduler pass — usually several hours
+  later. For a sub-30-day expiry buffer this is fine; for a tight
+  renewal window you'll want to pin to a DR account
+  (<a href="/topics/multi-account-dns/">multi-account DNS</a>) or
+  delegate validation to a more reliable provider
+  (<a href="/topics/cname-delegation/">CNAME delegation</a>).
+</p>
+
+<h2>What you should monitor</h2>
+
+<p>
+  Two queries against the audit log give you most of the operational
+  signal you need:
+</p>
+
+<ul>
+  <li>
+    <strong>Recent failed renewals.</strong> Anything with
+    <code>operation=renew</code> and <code>status=error</code> in
+    the last 24 hours. A single failure is recoverable on the next
+    pass; the same cert failing three times running is a paging event.
+  </li>
+  <li>
+    <strong>Certs within 14 days of expiry that haven't renewed.</strong>{" "}
+    A renewal that hasn't fired by then is almost always a config
+    issue (auto_renew off, or threshold misconfigured). Query the
+    cert list and filter on <code>days_until_expiry &lt; 14 &amp;&amp;
+    auto_renew</code>.
+  </li>
+</ul>
+
+<p>
+  The conversational sidecar's <code>/expiring 14</code> slash
+  command runs the second query for you. The first one is just a
+  ranged audit-log read against{" "}
+  <code>/api/audit?operation=renew&amp;status=error</code>.
+</p>
+
+<h2>Disabling auto-renewal</h2>
+
+<p>
+  Sometimes you don't want a certificate auto-renewed — a one-off cert
+  for a migration, a deprecated service, a cert that's being moved
+  off CertMate. PATCH the record:
+</p>
+
+<pre><code>{`curl -X POST http://localhost:8000/api/certificates/example.com/auto-renew \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -d '{ "enabled": false }'`}</code></pre>
+
+<p>
+  CertMate keeps the certificate on disk (you still control when to
+  delete it) but stops touching it. The audit log records who turned
+  auto-renewal off and when.
+</p>
+
+</Topic>

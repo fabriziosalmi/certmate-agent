@@ -1,0 +1,249 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="Audit log and compliance — what's recorded, what's queryable, what an auditor wants"
+  description="If a compliance auditor asks 'who renewed cert X on date Y and from what IP', CertMate answers in one query. Here's the schema, what's captured, what isn't, and how to wire the audit log into the rest of your SIEM."
+  slug="audit-and-compliance"
+  readTime="6 min"
+  source={{ file: "docs/architecture.md", section: "Audit Logging" }}
+>
+
+<p>
+  Certificate management touches the operationally sensitive parts of
+  a business: production hostnames, deployment automation, the keys
+  that prove your identity on the public internet. In any environment
+  with a compliance regime — SOC 2, ISO 27001, PCI, internal change-
+  management — the question "who changed what, when" is going to be
+  asked.
+</p>
+
+<p>
+  CertMate writes one structured audit row per state-changing
+  operation. The schema is stable, the queries are cheap, and the
+  data is enough to answer the questions an auditor actually asks.
+</p>
+
+<h2>The schema</h2>
+
+<p>
+  Every audit entry is a JSON document with a fixed shape:
+</p>
+
+<pre><code>{`{
+  "timestamp": "2026-05-17T18:00:00Z",
+  "operation": "create" | "renew" | "revoke" | "delete" |
+               "download" | "deploy" | "config_change" | ...,
+  "resource_type": "certificate" | "client_cert" | "backup" |
+                   "dns_account" | "setting" | "deploy_hook",
+  "resource_id": "example.com",
+  "status": "success" | "error",
+  "user": "alice@example.com",
+  "ip_address": "10.0.0.42",
+  "details": {
+    "common_name": "example.com",
+    "san_domains": ["*.example.com"],
+    "dns_provider": "cloudflare",
+    "dns_account_id": "production",
+    "serial_number": "04:5e:a1:..."
+  },
+  "error": null
+}`}</code></pre>
+
+<p>
+  The fields worth specifically calling out:
+</p>
+
+<ul>
+  <li>
+    <code>user</code> resolves the API token to a human identity. The
+    token's <code>created_by</code> field carries the email of the
+    operator who minted it; CertMate joins that in at log-write time
+    so the audit row is human-readable without a lookup.
+  </li>
+  <li>
+    <code>ip_address</code> is the source IP of the HTTP request — or
+    the loopback when CertMate's scheduler is acting on its own
+    (renewals). Useful to distinguish "human action" from "scheduled
+    job".
+  </li>
+  <li>
+    <code>details</code> is a free-form object whose shape depends on
+    the operation. Renewals carry the new serial; deploys carry the
+    hook id; config changes carry a diff of the field that changed.
+  </li>
+  <li>
+    <code>error</code> is null on success, populated on failure with
+    the upstream error verbatim. This is the field your audit query
+    grep against when investigating an incident.
+  </li>
+</ul>
+
+<h2>What gets written</h2>
+
+<p>
+  CertMate's auditor module exposes specific log methods for the
+  events that matter:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Event</th><th>When it fires</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>certificate_created</code></td><td>First issuance for a domain.</td></tr>
+    <tr><td><code>certificate_renewed</code></td><td>Successful renewal (new serial number).</td></tr>
+    <tr><td><code>certificate_revoked</code></td><td>Revocation against the CA's OCSP endpoint.</td></tr>
+    <tr><td><code>certificate_downloaded</code></td><td>Anyone fetched the cert / key over the API.</td></tr>
+    <tr><td><code>batch_operation</code></td><td>Bulk issue/renew/revoke kicked off.</td></tr>
+    <tr><td><code>api_request</code></td><td>Non-state-changing API calls (optional, configurable).</td></tr>
+    <tr><td><code>deploy_hook_fired</code></td><td>A hook was invoked + exit code + stdout/stderr (truncated).</td></tr>
+    <tr><td><code>config_change</code></td><td>Settings, DNS accounts, deploy hook configs.</td></tr>
+    <tr><td><code>auth_failure</code></td><td>Invalid token, scope rejection, rate limit hit.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The full method list lives in
+  <code>modules/core/audit_logger.py</code>. The non-obvious one is
+  <code>auth_failure</code>: every rejected request (bad bearer token,
+  out-of-scope domain on a scoped key) writes an audit row with the
+  IP and the attempted resource. This is what you grep when an
+  auditor asks "show me the unauthorized access attempts."
+</p>
+
+<h2>Queryable patterns</h2>
+
+<p>
+  CertMate exposes the audit log via REST{" "}
+  (<code>GET /api/audit</code> with filters on operation, resource,
+  user, status, time range) plus a UI timeline view per certificate.
+  The patterns auditors actually ask for:
+</p>
+
+<h3>"Who renewed cert X in the last 90 days?"</h3>
+
+<pre><code>{`curl -G http://localhost:8000/api/audit \\
+  -H "Authorization: Bearer $TOKEN" \\
+  --data-urlencode "operation=renew" \\
+  --data-urlencode "resource_id=example.com" \\
+  --data-urlencode "since=$(date -u -v-90d +%Y-%m-%d)"`}</code></pre>
+
+<h3>"Show me every failed renewal in the last week"</h3>
+
+<pre><code>{`curl -G http://localhost:8000/api/audit \\
+  -H "Authorization: Bearer $TOKEN" \\
+  --data-urlencode "operation=renew" \\
+  --data-urlencode "status=error" \\
+  --data-urlencode "since=$(date -u -v-7d +%Y-%m-%d)"`}</code></pre>
+
+<h3>"Who has access to issue against *.example.com?"</h3>
+
+<p>
+  This isn't really an audit-log question — it's an authorization
+  question. The answer comes from the API key registry:
+</p>
+
+<pre><code>{`curl http://localhost:8000/api/auth/keys \\
+  -H "Authorization: Bearer $TOKEN" \\
+  | jq '.[] | select(
+        .role == "operator" and
+        (.allowed_domains // []) | any(. as $d | "example.com" | inside($d))
+      )'`}</code></pre>
+
+<h2>Retention and export</h2>
+
+<p>
+  CertMate keeps audit entries in the local sqlite store with a
+  configurable retention window. The default is "forever" — auditors
+  appreciate this, your disk doesn't, so set
+  <code>AUDIT_RETENTION_DAYS</code> based on your compliance
+  requirement (90 days for general operations, 365+ for regulated
+  workloads).
+</p>
+
+<p>
+  Export the log periodically to your SIEM / log aggregator so the
+  audit trail survives a CertMate disaster:
+</p>
+
+<pre><code>{`# Tail the audit log file directly (JSONL format)
+tail -f /app/logs/audit/certificate_audit.log | \\
+  vector --config /etc/vector/certmate.toml
+
+# Or pull via API, paginated
+curl -G http://localhost:8000/api/audit \\
+  -H "Authorization: Bearer $TOKEN" \\
+  --data-urlencode "since=$LAST_RUN" \\
+  --data-urlencode "limit=1000"`}</code></pre>
+
+<p>
+  The on-disk format is line-delimited JSON — every line is one entry
+  — which lines up with how virtually every log shipper expects to
+  ingest data. <code>jq</code>, Splunk, Elastic, Datadog, Loki,
+  Vector: they all read this without configuration.
+</p>
+
+<h2>What's not in the audit log (and where to look)</h2>
+
+<ul>
+  <li>
+    <strong>Configuration before the change.</strong> CertMate writes
+    a <code>config_change</code> row with the field that changed and
+    the new value. The previous value is in the latest
+    <code>backup_*.zip</code> — CertMate auto-creates a backup
+    immediately before every config change, exactly so you can
+    answer "what did it look like before?"
+  </li>
+  <li>
+    <strong>The bytes of the private key.</strong> The audit log
+    records that a key was generated or rotated and what its
+    fingerprint is. The actual bytes live in{" "}
+    <code>/app/certificates/&lt;domain&gt;/privkey.pem</code> with
+    mode 600 and never enter the audit stream.
+  </li>
+  <li>
+    <strong>HTTP request bodies.</strong> CertMate logs that a
+    request happened, what user, against what resource, with what
+    outcome. It doesn't log the full request body — that would be a
+    PII-exfiltration risk in a multi-tenant deployment.
+  </li>
+</ul>
+
+<h2>Wiring this into a compliance program</h2>
+
+<p>
+  The basics, in order of effort:
+</p>
+
+<ol>
+  <li>
+    Set <code>AUDIT_RETENTION_DAYS</code> to your compliance
+    requirement, set <code>API_BEARER_TOKEN</code> to a long random
+    value, set up at least one operator-role API key per human who
+    needs CertMate access (don't share the admin token).
+  </li>
+  <li>
+    Ship the audit log to your SIEM with a real-time tail (Vector,
+    Filebeat, Promtail) — file path{" "}
+    <code>/app/logs/audit/certificate_audit.log</code>.
+  </li>
+  <li>
+    Wire alerts on <code>auth_failure</code> bursts (signal of
+    credential probing) and <code>renew/error</code> repeats (signal
+    of a broken DNS path before the cert expires).
+  </li>
+  <li>
+    Run CertMate's signed container image (every release ships with
+    cosign signature + SLSA L3 provenance — see the release page) so
+    the binary you're auditing is the binary that left CI.
+  </li>
+</ol>
+
+<p>
+  None of this is novel. It's the same audit posture you'd expect
+  from any well-run operational tool. The point is that CertMate
+  ships it as a contract, not as something you bolt on.
+</p>
+
+</Topic>
