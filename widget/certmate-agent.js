@@ -745,6 +745,118 @@ class CertMateAgent extends HTMLElement {
           margin: 0 2px;
         }
 
+        /* ---------- Streaming cursor ---------- */
+        .stream-cursor {
+          display: inline-block;
+          width: 7px;
+          height: 1.05em;
+          margin-left: 2px;
+          vertical-align: text-bottom;
+          background: var(--cm-fg);
+          opacity: 0.85;
+          animation: cm-blink 1.05s steps(2, end) infinite;
+        }
+        @keyframes cm-blink {
+          50% { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .stream-cursor { animation: none; }
+        }
+        .msg.assistant:not(.streaming) .stream-cursor { display: none; }
+
+        /* ---------- Code copy button ---------- */
+        .md pre { position: relative; }
+        .md pre.has-copy { padding-right: 60px; }
+        .code-copy {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          height: 24px;
+          padding: 0 8px;
+          font-family: var(--cm-font-mono);
+          font-size: 11px;
+          font-weight: 500;
+          color: var(--cm-fg-muted);
+          background: var(--cm-panel);
+          border: 1px solid var(--cm-border);
+          border-radius: 5px;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 120ms ease, color 120ms ease,
+                      background-color 120ms ease, border-color 120ms ease;
+        }
+        .md pre:hover .code-copy,
+        .md pre:focus-within .code-copy,
+        .code-copy:focus-visible { opacity: 1; }
+        .code-copy:hover { color: var(--cm-fg); border-color: var(--cm-border-strong); }
+        .code-copy.ok {
+          opacity: 1;
+          color: var(--cm-success);
+          border-color: color-mix(in oklab, var(--cm-success) 35%, var(--cm-border));
+        }
+        .code-copy:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 3px var(--cm-ring);
+        }
+
+        /* ---------- Wide table wrap ---------- */
+        .md-table-wrap {
+          overflow-x: auto;
+          margin: 12px 0;
+          border-radius: 8px;
+        }
+        .md-table-wrap > table { margin: 0; }
+
+        /* ---------- Tool latency badge ---------- */
+        .tool .latency {
+          margin-left: auto;
+          font-family: var(--cm-font-mono);
+          font-size: 10.5px;
+          color: var(--cm-fg-subtle);
+          font-weight: 400;
+          padding-left: 8px;
+        }
+        .tool .latency:empty { display: none; }
+
+        /* ---------- Send button loading state ---------- */
+        button.primary.loading {
+          color: transparent;
+          position: relative;
+          cursor: progress;
+        }
+        button.primary.loading::after {
+          content: "";
+          position: absolute;
+          left: 50%; top: 50%;
+          width: 14px; height: 14px;
+          margin: -7px 0 0 -7px;
+          border-radius: 999px;
+          border: 1.5px solid color-mix(in oklab, var(--cm-accent-fg) 35%, transparent);
+          border-top-color: var(--cm-accent-fg);
+          animation: cm-spin 720ms linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          button.primary.loading::after { animation: none; }
+        }
+
+        /* ---------- Citation link styling ---------- */
+        .md a.cite {
+          font-family: var(--cm-font-mono);
+          font-size: 0.88em;
+          color: var(--cm-fg-muted);
+          border-bottom-color: var(--cm-border-strong);
+        }
+        .md a.cite:hover {
+          color: var(--cm-link);
+          border-bottom-color: var(--cm-link);
+        }
+
+        /* ---------- Selection color ---------- */
+        ::selection {
+          background: color-mix(in oklab, var(--cm-link) 28%, transparent);
+          color: var(--cm-fg);
+        }
+
         /* ---------- Mode ribbon (fill mode only) ---------- */
         .ribbon {
           align-self: stretch;
@@ -912,8 +1024,25 @@ class CertMateAgent extends HTMLElement {
     }
   }
 
-  _scroll() {
-    this._logEl.scrollTop = this._logEl.scrollHeight;
+  // Distance from the bottom (in px) below which we consider the user
+  // "still pinned to the latest". Above this, new content stops yanking
+  // the scroll position — they're reading something, leave them alone.
+  // 80px ≈ ~3 lines of body text plus padding.
+  static STICKY_THRESHOLD_PX = 80;
+
+  _isPinnedToBottom() {
+    const el = this._logEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight
+      <= CertMateAgent.STICKY_THRESHOLD_PX;
+  }
+
+  _scroll(opts = {}) {
+    // Sticky-bottom: only auto-scroll if the user is already near the
+    // bottom, OR if the caller explicitly forces it (user just sent a
+    // message, /newSession, etc.).
+    if (opts.force || this._isPinnedToBottom()) {
+      this._logEl.scrollTop = this._logEl.scrollHeight;
+    }
   }
 
   _addUser(text) {
@@ -929,7 +1058,9 @@ class CertMateAgent extends HTMLElement {
     }
     el.textContent = text;
     this._logEl.appendChild(el);
-    this._scroll();
+    // The user just sent something — they want to see what comes next.
+    // Force the scroll even if they were reading history.
+    this._scroll({ force: true });
   }
 
   _addAssistant(text) {
@@ -937,6 +1068,7 @@ class CertMateAgent extends HTMLElement {
     el.className = "msg assistant md";
     el.innerHTML = this._prettify(this._md(text));
     this._logEl.appendChild(el);
+    this._enhanceAssistantMessage(el);
     this._scroll();
     return el;
   }
@@ -946,6 +1078,58 @@ class CertMateAgent extends HTMLElement {
     return html
       .replace(/<td>None<\/td>/g, '<td class="empty">—</td>')
       .replace(/<td>null<\/td>/g, '<td class="empty">—</td>');
+  }
+
+  // Post-process a rendered assistant message: wrap wide tables, attach
+  // copy buttons to <pre> blocks, smart-expand small <details>. Pure DOM
+  // ops — keeps the markdown renderer dumb.
+  _enhanceAssistantMessage(el) {
+    // 1. Wide tables: a CSS overflow on the container loses border radii;
+    // wrap each table in a scroll container so the bubble stays calm.
+    for (const t of el.querySelectorAll("table")) {
+      if (t.parentElement?.classList?.contains("md-table-wrap")) continue;
+      const wrap = document.createElement("div");
+      wrap.className = "md-table-wrap";
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+
+    // 2. Copy button per <pre> block. The button sits inside the <pre>
+    // (absolutely positioned) so the markup stays semantically clean.
+    for (const pre of el.querySelectorAll("pre")) {
+      if (pre.querySelector(".code-copy")) continue;
+      pre.classList.add("has-copy");
+      const btn = document.createElement("button");
+      btn.className = "code-copy";
+      btn.type = "button";
+      btn.setAttribute("aria-label", "Copy code to clipboard");
+      btn.title = "Copy";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", async () => {
+        const code = pre.querySelector("code")?.innerText ?? pre.innerText;
+        try {
+          await navigator.clipboard.writeText(code);
+          btn.textContent = "Copied";
+          btn.classList.add("ok");
+          clearTimeout(this._copyTimers?.get(btn));
+          (this._copyTimers ||= new Map()).set(btn, setTimeout(() => {
+            btn.textContent = "Copy";
+            btn.classList.remove("ok");
+          }, 1200));
+        } catch {
+          btn.textContent = "Failed";
+          setTimeout(() => (btn.textContent = "Copy"), 1200);
+        }
+      });
+      pre.appendChild(btn);
+    }
+
+    // 3. Smart <details>: open small payloads automatically (preview is
+    // useful inline), keep large ones collapsed (would dominate the bubble).
+    for (const d of el.querySelectorAll("details")) {
+      const body = d.querySelector("pre")?.innerText ?? "";
+      if (body.length <= 320) d.open = true;
+    }
   }
 
   // Minimal markdown: escape HTML first, then render fences, inline code,
@@ -984,6 +1168,21 @@ class CertMateAgent extends HTMLElement {
       links.push(
         '<a href="' + esc(safeUrl) + '" target="_blank" rel="noopener noreferrer">' +
           esc(text) + "</a>"
+      );
+      return PH + "L" + (links.length - 1) + PH;
+    });
+
+    // 4. Citation linker. The system prompt asks the LLM to cite source
+    // files inline as "(docs/dns-providers.md)" or "(README.md)". Turn
+    // those literal mentions into links to the actual file on CertMate's
+    // GitHub repo. Recognize an optional surrounding parens and at-end
+    // ".md" with a tight charset so we don't false-positive into prose.
+    const citeRe = /\(((?:README\.md|docs\/[A-Za-z0-9._/-]+\.md))\)/g;
+    src = src.replace(citeRe, (_, path) => {
+      const href = "https://github.com/fabriziosalmi/certmate/blob/main/" + path;
+      links.push(
+        '(<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" class="cite">' +
+          esc(path) + "</a>)"
       );
       return PH + "L" + (links.length - 1) + PH;
     });
@@ -1056,12 +1255,22 @@ class CertMateAgent extends HTMLElement {
         glyph.classList.remove("spin");
         glyph.textContent = ok ? "→" : "×";
       }
+      // Latency: how long the tool took from tool_call to tool_result.
+      // Mostly upstream wall time (CertMate API + JSON parse) — useful
+      // to spot a flaky DNS provider or a slow audit endpoint at a glance.
+      const ms = performance.now() - (pending._startedAt ?? performance.now());
+      const latencyEl = pending.querySelector(".latency");
+      if (latencyEl) latencyEl.textContent = `${this._formatLatency(ms)}`;
       pending.insertAdjacentHTML(
         "beforeend",
         `<details><summary>result</summary><pre>${this._escape(
           typeof result === "string" ? result : JSON.stringify(result, null, 2),
         )}</pre></details>`,
       );
+      // Smart details: open small results inline.
+      const det = pending.querySelector("details:last-of-type");
+      const body = det?.querySelector("pre")?.innerText ?? "";
+      if (det && body.length <= 320) det.open = true;
       this._scroll();
       return;
     }
@@ -1077,14 +1286,22 @@ class CertMateAgent extends HTMLElement {
       <div>
         ${glyph}
         <strong>${this._escape(name)}</strong>${hasArgs ? `<span class="args">(${argsStr})</span>` : ""}
+        <span class="latency" aria-hidden="true"></span>
       </div>
       ${result !== undefined ? `<details><summary>result</summary><pre>${this._escape(typeof result === "string" ? result : JSON.stringify(result, null, 2))}</pre></details>` : ""}
     `;
+    el._startedAt = performance.now();
     this._logEl.appendChild(el);
     if (result === undefined) {
       (this._pendingTools[name] ||= []).push(el);
     }
     this._scroll();
+  }
+
+  _formatLatency(ms) {
+    if (ms < 1) return "<1ms";
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
   }
 
   _addConfirm(payload) {
@@ -1150,6 +1367,8 @@ class CertMateAgent extends HTMLElement {
     this._inputEl.value = "";
     this._busy = true;
     this._sendEl.disabled = true;
+    this._sendEl.classList.add("loading");
+    this._sendEl.setAttribute("aria-busy", "true");
     // Clear any half-built streaming bubble from a previously aborted turn.
     if (this._streamingEl) {
       this._streamingEl.remove();
@@ -1202,6 +1421,8 @@ class CertMateAgent extends HTMLElement {
     } finally {
       this._busy = false;
       this._sendEl.disabled = false;
+      this._sendEl.classList.remove("loading");
+      this._sendEl.removeAttribute("aria-busy");
       this._inputEl.focus();
       // Only persist locally on a turn that the server actually accepted.
       // Otherwise a retry would duplicate the user message in history.
@@ -1218,15 +1439,25 @@ class CertMateAgent extends HTMLElement {
   _streamingText = "";       // raw accumulated text
 
   _appendStreamToken(text) {
+    if (!text) return;
     if (!this._streamingEl) {
       this._streamingEl = document.createElement("div");
       this._streamingEl.className = "msg assistant md streaming";
+      // The visible text lives inside a child node so we can append
+      // O(1) text deltas without rebuilding the TextNode for every
+      // token. The blinking cursor is a sibling we keep last.
+      this._streamingTextNode = document.createTextNode("");
+      this._streamingEl.appendChild(this._streamingTextNode);
+      const cursor = document.createElement("span");
+      cursor.className = "stream-cursor";
+      cursor.setAttribute("aria-hidden", "true");
+      this._streamingEl.appendChild(cursor);
       this._logEl.appendChild(this._streamingEl);
       this._streamingText = "";
     }
     this._streamingText += text;
-    // During streaming render as text (escape only) — markdown applies on done.
-    this._streamingEl.textContent = this._streamingText;
+    // appendData mutates the node in place — no relayout-via-textContent.
+    this._streamingTextNode.appendData(text);
     this._scroll();
   }
 
@@ -1234,8 +1465,11 @@ class CertMateAgent extends HTMLElement {
     if (this._streamingEl) {
       const text = finalText || this._streamingText;
       this._streamingEl.classList.remove("streaming");
+      // innerHTML replaces both the text node and the cursor span.
       this._streamingEl.innerHTML = this._prettify(this._md(text));
+      this._enhanceAssistantMessage(this._streamingEl);
       this._streamingEl = null;
+      this._streamingTextNode = null;
       this._streamingText = "";
       this._scroll();
       return text;
