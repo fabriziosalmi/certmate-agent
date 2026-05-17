@@ -14,6 +14,7 @@ from . import __version__
 from .api import chat as chat_api
 from .api import conversations as conversations_api
 from .api import health as health_api
+from .api.security_headers import SecurityHeadersMiddleware
 from .config import settings
 from .db import init_db
 from .rag.bootstrap import maybe_bootstrap_index
@@ -55,6 +56,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+# Security headers (CSP frame-ancestors, XFO, nosniff, referrer, perms).
+# Added AFTER CORS so the CORS middleware sees raw requests; the headers
+# stamp on the outgoing response either way.
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(health_api.router)
 app.include_router(chat_api.router)
