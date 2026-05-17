@@ -1,0 +1,68 @@
+name: Bug report
+description: A reproducible defect in the agent, widget, or release artifacts.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The smaller the reproduction case, the faster the fix.
+        **Security issues** — please don't use this template. See [SECURITY.md](../blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `python -m agent.main --version` or the release tag.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      multiple: true
+      options:
+        - agent (FastAPI / chat loop / slash router)
+        - widget (web component)
+        - RAG / docs index
+        - release pipeline (image / cosign / SLSA)
+        - public site (agent.certmate.org)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: Actual behavior, with the relevant log line if you have it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. Start the agent with AGENT_MODE=full and ...
+        2. Open the widget at /widget/
+        3. Run /list
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        OS:
+        Python:
+        Browser (if widget):
+        LM Studio / CertMate version:
+  - type: input
+    id: request_id
+    attributes:
+      label: Request ID (optional)
+      description: The X-Request-Id header from the failing response, if any.

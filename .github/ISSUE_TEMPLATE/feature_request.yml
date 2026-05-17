@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a capability or change to the agent or widget.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Concrete, narrowly scoped proposals land faster than open-ended ideas.
+        If you can sketch the API surface or the UX change, do.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What's hard to do today, and for whom.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: Concretely, what you'd add or change. If it's a new tool, name it and describe its contract.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What you'd do today instead, and why it falls short.
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Explicitly out of scope
+      description: Anything related you are NOT asking for, to help frame the conversation.

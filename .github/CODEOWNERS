@@ -1,0 +1,6 @@
+# CODEOWNERS — review routing.
+# Every PR gets a review request from the owners listed for any path
+# the PR touches. Maintained until the project picks up regular
+# external contributors; expand or carve into per-area owners then.
+
+* @fabriziosalmi
