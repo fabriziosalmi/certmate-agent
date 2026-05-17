@@ -16,11 +16,26 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
+import logging
 import shlex
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from .certmate_client import CertMateClient, CertMateError
+from .config import settings
+from .db import audit, save_pending_action
+from .rag import get_store
+from .rag.indexer import (
+    DEFAULT_BRANCH,
+    DEFAULT_INDEX_PATH,
+    DEFAULT_PATHS,
+    DEFAULT_REPO,
+    IndexerError,
+    build_index_iter,
+)
+from .tools import REGISTRY, ToolKind, get_tool
 
 # Per-turn session id, set by dispatch() before invoking a handler. Read by
 # _run_read / _propose_write so they can forward it to CertMate audit. Using
@@ -28,14 +43,6 @@ from typing import Any
 _current_session: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_current_session", default=None
 )
-
-from .certmate_client import CertMateClient, CertMateError
-from .config import settings
-from .db import audit, save_pending_action
-from .rag import get_store
-from .rag.indexer import DEFAULT_INDEX_PATH, DEFAULT_PATHS, DEFAULT_REPO, DEFAULT_BRANCH
-from .rag.indexer import IndexerError, build_index_iter
-from .tools import REGISTRY, ToolKind, get_tool
 
 Handler = Callable[..., AsyncGenerator[dict[str, Any], None]]
 
@@ -659,8 +666,7 @@ async def dispatch(
 # Sanity: every tool we reference here must exist in REGISTRY *for the
 # current mode*. In docs_only the CertMate-coupled tools are absent on
 # purpose, so we only require docs_search.
-import logging as _logging
-_log_slash = _logging.getLogger(__name__)
+_log_slash = logging.getLogger(__name__)
 _REFERENCED_TOOLS_FULL = {
     "system_health", "system_overview", "cert_list", "cert_get",
     "dns_providers_info", "dns_accounts_list", "backups_list",

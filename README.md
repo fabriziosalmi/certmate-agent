@@ -147,23 +147,6 @@ Both `/docs <query>` (slash, sub-50ms after embed) and the LLM tool
 call `docs_search` for any conceptual / how-to question, which keeps
 small models like `gemma-4-e2b` grounded.
 
-## Status
-
-- [x] LM Studio chat + embeddings client
-- [x] CertMate REST client (1:1)
-- [x] Tool registry + read/write/destructive kinds
-- [x] FastAPI SSE chat loop with tool-calling
-- [x] Confirm token flow
-- [x] Embeddable vanilla widget with slash autocomplete
-- [x] Deterministic slash-command router
-- [x] sqlite for pending actions + audit
-- [x] RAG over CertMate docs (embeddings, pure-Python cosine)
-- [x] Admin gate + `/reindex` with progress + hot-swap
-- [x] Optional server-side conversation persistence per `session_id`
-- [x] Background scheduler for TTL pruning
-- [x] Optional OpenRouter fallback LLM with circuit breaker
-- [x] Dockerfile + compose example
-
 ## Admin gate
 
 Set `AGENT_ADMIN_TOKEN=<secret>` to enable admin-only commands like

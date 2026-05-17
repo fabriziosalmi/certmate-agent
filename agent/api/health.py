@@ -5,7 +5,6 @@ from fastapi import APIRouter
 
 from ..certmate_client import CertMateClient, CertMateError
 from ..config import settings
-from ..llm.lmstudio import LMStudioClient, LMStudioError
 from ..tools import REGISTRY
 
 router = APIRouter()
