@@ -902,7 +902,14 @@ class CertMateAgent extends HTMLElement {
   _addUser(text) {
     const el = document.createElement("div");
     el.className = "msg user";
-    if (text.startsWith("/")) el.classList.add("cmd");
+    // Render as a terminal-style chip only for short slash commands
+    // (e.g. `/status`, `/cert example.com`). A long natural-language
+    // payload after `/docs` or `/ask` should look like prose, not a
+    // monospaced wall.
+    if (/^\/[a-z][a-z0-9-]{0,20}(?:\s+\S{1,32}){0,2}\s*$/i.test(text)
+        && text.length <= 48) {
+      el.classList.add("cmd");
+    }
     el.textContent = text;
     this._logEl.appendChild(el);
     this._scroll();
@@ -986,8 +993,15 @@ class CertMateAgent extends HTMLElement {
       .replace(/^###\s+(.+)$/gm, "<h3 class='md'>$1</h3>")
       .replace(/^##\s+(.+)$/gm, "<h2 class='md'>$1</h2>")
       .replace(/^#\s+(.+)$/gm, "<h1 class='md'>$1</h1>")
+      // Horizontal rule: --- on its own line.
+      .replace(/^-{3,}$/gm, "<hr class='md'>")
       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^\w])_([^_\n]+)_/g, "$1<em>$2</em>");
+      // Italic with underscores: word-boundary on BOTH sides so that
+      // identifiers like API_BEARER_TOKEN_FILE or SECRET_KEY survive.
+      // Non-greedy body so a line with multiple identifiers doesn't
+      // collapse into one giant <em>. Match only when surrounded by
+      // non-word chars (or string edges).
+      .replace(/(^|[^\w])_([^_\n]+?)_(?=[^\w]|$)/g, "$1<em>$2</em>");
 
     src = src.replace(/(?:^|\n)((?:- .+(?:\n|$))+)/g, (_, group) => {
       const items = group

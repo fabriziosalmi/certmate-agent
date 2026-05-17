@@ -77,6 +77,15 @@ def list_commands() -> list[SlashCommand]:
 
 # ---------- output helpers ----------
 
+def _cell(v: Any) -> str:
+    """Render a value for a markdown table cell. Empty / null / placeholder
+    values collapse to an em-dash; the widget then styles them subtly via
+    the .empty class so missing data reads as 'absent', not '?'."""
+    if v is None or v == "" or v == "?":
+        return "—"
+    return str(v)
+
+
 def _md_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     if not rows:
         return "_(no results)_"
@@ -113,6 +122,23 @@ def _emit_error(msg: str) -> dict[str, Any]:
 
 def _emit_done() -> dict[str, Any]:
     return {"event": "done", "data": {}}
+
+
+def _truncate_excerpt(text: str, max_chars: int) -> str:
+    """Truncate a markdown excerpt without leaving an orphan code fence.
+
+    RAG hits are arbitrary slices of doc chunks; a hard cut can land in
+    the middle of a ``` block, leaving an open fence that bleeds into
+    everything that follows. Count fence markers in the truncated body;
+    if odd, append a synthetic close so the rest of the message renders
+    cleanly.
+    """
+    if len(text) <= max_chars:
+        return text
+    body = text[:max_chars]
+    if body.count("```") % 2 == 1:
+        body = body.rstrip() + "\n```"
+    return body + " …"
 
 
 def _json_codeblock(data: Any, max_chars: int = 1600) -> str:
@@ -252,13 +278,17 @@ async def _h_status(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator
         cert_count = data.get("cert_count")
         expiring = data.get("expiring_within_30d") or []
         msg = [
-            f"**Health:** `{health.get('status', '?')}`",
-            f"**Certificates:** {cert_count if cert_count is not None else '?'}",
+            f"**Health:** `{_cell(health.get('status'))}`",
+            f"**Certificates:** {_cell(cert_count)}",
             "",
         ]
         if expiring:
             msg.append(f"**Expiring within 30 days ({len(expiring)}):**")
-            msg.append(_md_table(expiring, ["domain", "days_until_expiry", "status"]))
+            # Normalize cells so missing fields render as em-dash, not "None".
+            normalized = [
+                {k: _cell(v) for k, v in row.items()} for row in expiring
+            ]
+            msg.append(_md_table(normalized, ["domain", "days_until_expiry", "status"]))
         else:
             msg.append("_No certificates expiring within 30 days._")
         yield _emit_message("\n".join(msg))
@@ -283,10 +313,10 @@ async def _h_expiring(argv: list[str], _is_admin: bool = False) -> AsyncGenerato
     if ok and isinstance(data, list) and data:
         rows = [
             {
-                "domain": c.get("domain", "?"),
-                "days": c.get("days_until_expiry", "?"),
-                "status": c.get("status", "?"),
-                "provider": c.get("dns_provider", c.get("provider", "?")),
+                "domain": _cell(c.get("domain")),
+                "days": _cell(c.get("days_until_expiry")),
+                "status": _cell(c.get("status")),
+                "provider": _cell(c.get("dns_provider") or c.get("provider")),
             }
             for c in data if isinstance(c, dict)
         ]
@@ -309,10 +339,10 @@ async def _h_list(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[d
     if ok and isinstance(data, list) and data:
         rows = [
             {
-                "domain": c.get("domain", "?"),
-                "days": c.get("days_until_expiry", "?"),
-                "status": c.get("status", "?"),
-                "auto_renew": c.get("auto_renew", "?"),
+                "domain": _cell(c.get("domain")),
+                "days": _cell(c.get("days_until_expiry")),
+                "status": _cell(c.get("status")),
+                "auto_renew": _cell(c.get("auto_renew")),
             }
             for c in data if isinstance(c, dict)
         ]
@@ -516,10 +546,12 @@ async def _h_docs(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[di
     lines = [f"**Top {len(hits)} excerpt(s) for** `{query}`", ""]
     for h in hits:
         title = h.get("title") or "_"
-        head = f"`{h['source']}` _({title})_ — score {h['score']}"
-        body = h["text"][:600]
-        if len(h["text"]) > 600:
-            body += " …"
+        # Strip underscores from the title so they can't open stray italic
+        # spans in the heading (titles often contain identifiers like
+        # API_BEARER_TOKEN_FILE that would otherwise corrupt the render).
+        safe_title = title.replace("_", " ")
+        head = f"`{h['source']}` _({safe_title})_ — score {h['score']}"
+        body = _truncate_excerpt(h["text"], 600)
         lines.append(f"### {head}")
         lines.append(body)
         lines.append("")
