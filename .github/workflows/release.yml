@@ -1,0 +1,185 @@
+name: release
+
+# Builds and publishes a signed, provenance-attested container image of
+# certmate-agent on every `v*` tag. Coherent with the SLSA / cosign
+# posture established on CertMate.
+#
+# Pipeline:
+#   1. Build the Docker image from docker/Dockerfile.
+#   2. Push to ghcr.io/<owner>/certmate-agent with the tag (e.g. v0.1.0)
+#      and `latest`. Output the image digest so the next steps reference
+#      the exact bytes that got pushed (not a floating tag).
+#   3. Sign the image with cosign keyless using the OIDC token issued
+#      by GitHub Actions. No long-lived signing key.
+#   4. Generate SLSA Level 3 build provenance using the official
+#      slsa-framework generator. The provenance is attached as an OCI
+#      referrer of the image so `cosign verify-attestation` / `slsa-verifier`
+#      can pull it without a separate registry.
+#
+# Required permissions are set explicitly per-job (least privilege).
+# Required secrets: none — keyless cosign + GITHUB_TOKEN is enough.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re)release, e.g. v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ----- 1. Build + push -----
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write          # push to GHCR
+      id-token: write          # keyless cosign signing
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: image
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.image.outputs.tag }}
+            org.opencontainers.image.licenses=MIT
+          # Producing the multi-arch image would double build time; the
+          # target platforms (Fly fra region, local laptops) are all amd64
+          # today. Easy to add linux/arm64 here later if needed.
+          platforms: linux/amd64
+          provenance: false    # we attach SLSA L3 ourselves, below
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            "${{ steps.image.outputs.image }}@${{ steps.push.outputs.digest }}"
+
+  # ----- 2. SLSA L3 provenance -----
+  # Generates a signed provenance document covering the digest pushed
+  # above and attaches it to the image as a referrer. Lives in a
+  # separate reusable workflow so the SLSA team-maintained generator
+  # produces it (instead of us hand-rolling attestation).
+  provenance:
+    needs: build
+    permissions:
+      actions: read       # read the workflow run that produced the image
+      id-token: write     # mint the signing OIDC token
+      packages: write     # attach the attestation to the OCI image
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----- 3. Verification smoke (post-publish) -----
+  # Pulls the freshly pushed image and verifies both the cosign signature
+  # and the SLSA provenance. Catches misconfiguration before anyone else
+  # tries the same.
+  verify:
+    needs: [build, provenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+      id-token: write   # `cosign verify` keyless needs an OIDC token
+    steps:
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Verify cosign signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+
+      - name: Install slsa-verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@v2.6.0
+
+      - name: Verify SLSA provenance
+        run: |
+          slsa-verifier verify-image \
+            --source-uri "github.com/${{ github.repository }}" \
+            --source-tag "${{ needs.build.outputs.tag }}" \
+            "${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+
+      - name: Release summary
+        run: |
+          {
+            echo "## ✅ certmate-agent ${{ needs.build.outputs.tag }} released"
+            echo ""
+            echo "**Image:** \`${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}\`"
+            echo "**Digest:** \`${{ needs.build.outputs.digest }}\`"
+            echo ""
+            echo "Signed with cosign keyless, SLSA L3 provenance attached."
+            echo ""
+            echo "### Pull"
+            echo '```bash'
+            echo "docker pull ${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}"
+            echo '```'
+            echo ""
+            echo "### Verify locally"
+            echo '```bash'
+            echo "cosign verify \\"
+            echo "  --certificate-identity-regexp 'https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*' \\"
+            echo "  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\"
+            echo "  ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+            echo ""
+            echo "slsa-verifier verify-image \\"
+            echo "  --source-uri github.com/${{ github.repository }} \\"
+            echo "  --source-tag ${{ needs.build.outputs.tag }} \\"
+            echo "  ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
