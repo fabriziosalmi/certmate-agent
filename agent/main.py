@@ -22,6 +22,7 @@ from .api.request_context import (
 from .api.security_headers import SecurityHeadersMiddleware
 from .config import settings
 from .db import init_db
+from .llm.shared import close_embed_client
 from .rag.bootstrap import maybe_bootstrap_index
 from .scheduler import scheduler_lifespan
 
@@ -50,7 +51,10 @@ async def lifespan(app: FastAPI):
     # download the published artifact before serving traffic.
     await maybe_bootstrap_index()
     async with scheduler_lifespan():
-        yield
+        try:
+            yield
+        finally:
+            await close_embed_client()
 
 
 app = FastAPI(title="certmate-agent", version=__version__, lifespan=lifespan)

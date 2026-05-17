@@ -162,4 +162,12 @@ class ChatLLM:
         # embedding model. If you need fallback embeddings, add a separate
         # provider here. Today the index is built once and queried often,
         # so this is rarely on the hot failure path.
-        return await self.primary.embed(texts)
+        try:
+            out = await self.primary.embed(texts)
+            self._record_success()
+            return out
+        except _RETRIABLE as e:
+            # Update the breaker so a flapping LM Studio doesn't cause
+            # chat to keep hammering it once embeds are already failing.
+            self._record_failure()
+            raise ChainError(f"embed failed: {e}") from e

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -54,25 +55,46 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 """
 
 
+_conn_cache: sqlite3.Connection | None = None
+_conn_lock = threading.Lock()
+
+
 def _conn() -> sqlite3.Connection:
-    path = Path(settings.agent_db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    """Process-singleton sqlite connection.
+
+    Single-writer model: opening/closing per call wastes ~0.3ms each and
+    re-executes PRAGMAs that are persistent anyway. WAL allows concurrent
+    readers, and ``check_same_thread=False`` lets the asyncio thread pool
+    (asyncio.to_thread) share one connection — guarded by a write lock on
+    the application side via Python's GIL + the asyncio.to_thread pool's
+    per-call serialization.
+    """
+    global _conn_cache
+    if _conn_cache is not None:
+        return _conn_cache
+    with _conn_lock:
+        if _conn_cache is not None:
+            return _conn_cache
+        path = Path(settings.agent_db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA synchronous=NORMAL")  # WAL-safe, faster commits
+        _conn_cache = conn
+        return conn
 
 
 def init_db() -> None:
-    with _conn() as c:
-        c.executescript(_SCHEMA)
-        # Idempotent migration: older agent.db files predate the
-        # session_id column on pending_actions. ALTER TABLE ADD COLUMN
-        # is the documented sqlite migration path for additive changes.
-        cols = {row["name"] for row in c.execute("PRAGMA table_info(pending_actions)")}
-        if "session_id" not in cols:
-            c.execute("ALTER TABLE pending_actions ADD COLUMN session_id TEXT")
+    c = _conn()
+    c.executescript(_SCHEMA)
+    # Idempotent migration (additive only — sqlite has no DROP COLUMN
+    # before 3.35, but we don't need that). Re-runnable on every boot.
+    cols = {row["name"] for row in c.execute("PRAGMA table_info(pending_actions)")}
+    if "session_id" not in cols:
+        c.execute("ALTER TABLE pending_actions ADD COLUMN session_id TEXT")
+    c.commit()
 
 
 # ---------- pending actions ----------

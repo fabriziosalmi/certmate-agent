@@ -24,7 +24,6 @@ from typing import Any
 
 from ..certmate_client import CertMateClient
 from ..config import settings
-from ..llm.lmstudio import LMStudioClient
 from ..rag import get_store
 
 
@@ -151,6 +150,7 @@ async def _docs_search(_c, args):
     """RAG over CertMate docs. Ignores the CertMateClient arg.
     Cached by normalized query + k; cache invalidated on /reindex.
     """
+    from ..llm.shared import get_embed_client
     from ..rag.cache import get_cache
 
     query = (args.get("query") or "").strip()
@@ -171,8 +171,11 @@ async def _docs_search(_c, args):
     if cached is not None:
         return {"ready": True, "hits": cached, "cached": True}
 
-    async with LMStudioClient() as llm:
-        vectors = await llm.embed([query])
+    # Shared embed client (process singleton). Reuses the httpx
+    # connection pool across queries — saves the TLS handshake on
+    # every docs_search call.
+    llm = await get_embed_client()
+    vectors = await llm.embed([query])
     hits = store.search(vectors[0], k=k)
     payload = [
         {
