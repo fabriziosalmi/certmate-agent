@@ -133,156 +133,617 @@ class CertMateAgent extends HTMLElement {
     this.sessionId = this._loadOrCreateSession();
     this._history = [];
     this._logEl.innerHTML = "";
+    this._statusEl = null;
+    this._streamingEl = null;
+    this._streamingText = "";
+    this._pendingTools = {};
     this._addHint();
   }
 
   _render() {
     this._shadow.innerHTML = `
       <style>
-        :host { display:block; font-family: inherit; color: var(--cm-fg); }
+        :host {
+          display: block;
+          font-family: var(--cm-font-sans);
+          color: var(--cm-fg);
+          font-size: 14px;
+          line-height: 1.55;
+          font-feature-settings: "cv11", "ss01", "ss03", "kern", "calt";
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
+        }
         :host([fill]) { height: 100%; }
+        * { box-sizing: border-box; }
+
+        /* ---------- Card shell ---------- */
         .card {
           background: var(--cm-bg);
           border: 1px solid var(--cm-border);
-          border-radius: 12px;
+          border-radius: 14px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
           height: 540px;
-          box-shadow: 0 1px 2px rgba(0,0,0,.04);
+          box-shadow: var(--cm-shadow-1);
+          isolation: isolate;
         }
-        :host([fill]) .card { height: 100%; border-radius: 0; border: none; }
+        :host([fill]) .card {
+          height: 100%;
+          border-radius: 0;
+          border: none;
+          box-shadow: none;
+        }
+        /* In fill mode the host page provides the brand chrome —
+           hide the in-widget header to avoid a doubled title. */
+        :host([fill]) .header { display: none; }
+
+        /* ---------- Header ---------- */
         .header {
-          padding: .65rem .9rem;
+          flex: 0 0 auto;
+          height: 48px;
+          padding: 0 16px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           border-bottom: 1px solid var(--cm-border);
-          font-size: .85rem;
-          color: var(--cm-muted);
-          display: flex; align-items: center; gap: .5rem;
+          background: var(--cm-panel);
         }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
-        .log {
-          flex: 1; overflow-y: auto; padding: .8rem;
-          display: flex; flex-direction: column; gap: .6rem;
-          font-size: .92rem; line-height: 1.45;
+        .brand {
+          display: flex; align-items: center; gap: 8px;
+          font-weight: 600;
+          font-size: 13px;
+          letter-spacing: -0.01em;
+          color: var(--cm-fg);
         }
-        .msg { padding: .55rem .75rem; border-radius: 8px; white-space: pre-wrap; }
-        .msg.user { background: rgba(37,99,235,.08); align-self: flex-end; max-width: 85%; }
-        .msg.assistant { background: rgba(0,0,0,.03); max-width: 95%; }
-        @media (prefers-color-scheme: dark) {
-          .msg.assistant { background: rgba(255,255,255,.04); }
+        .dot {
+          width: 8px; height: 8px; border-radius: 999px;
+          background: var(--cm-success);
+          box-shadow: 0 0 0 3px color-mix(in oklab, var(--cm-success) 22%, transparent);
+          position: relative;
         }
-        .tool {
-          font-family: ui-monospace, SF Mono, Consolas, monospace;
-          font-size: .78rem;
-          background: var(--cm-tool-bg);
-          border-left: 3px solid var(--cm-accent);
-          padding: .4rem .55rem;
-          border-radius: 4px;
-          color: var(--cm-muted);
+        .dot::after {
+          content: "";
+          position: absolute; inset: -2px;
+          border-radius: inherit;
+          background: var(--cm-success);
+          opacity: 0;
+          animation: cm-pulse 2.2s cubic-bezier(.4,0,.2,1) infinite;
         }
-        .tool.error { border-left-color: #ef4444; }
-        .confirm {
-          background: var(--cm-warn-bg);
-          border: 1px solid var(--cm-warn-border);
+        @keyframes cm-pulse {
+          0%   { transform: scale(0.85); opacity: 0.45; }
+          70%  { transform: scale(1.9);  opacity: 0; }
+          100% { transform: scale(1.9);  opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .dot::after { animation: none; }
+        }
+        .badge {
+          font-family: var(--cm-font-mono);
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          padding: 3px 7px;
+          border-radius: 999px;
+          background: var(--cm-surface);
+          color: var(--cm-fg-muted);
+          border: 1px solid var(--cm-border);
+        }
+        .spacer { flex: 1; }
+        .icon-btn {
+          appearance: none;
+          background: transparent;
+          color: var(--cm-fg-muted);
+          border: 1px solid transparent;
           border-radius: 8px;
-          padding: .65rem .75rem;
-          font-size: .9rem;
-        }
-        .confirm.destructive {
-          background: var(--cm-danger-bg);
-          border-color: var(--cm-danger-border);
-        }
-        .confirm-actions { margin-top: .5rem; display: flex; gap: .5rem; }
-        button {
-          font: inherit; cursor: pointer;
-          border-radius: 6px; padding: .35rem .8rem;
-          border: 1px solid var(--cm-border); background: var(--cm-bg); color: var(--cm-fg);
-        }
-        button.primary { background: var(--cm-accent); color: white; border-color: var(--cm-accent); }
-        button.danger { background: #ef4444; color: white; border-color: #ef4444; }
-        button:disabled { opacity: .5; cursor: not-allowed; }
-        .form {
-          display: flex; gap: .5rem; padding: .6rem; border-top: 1px solid var(--cm-border);
-        }
-        input[type="text"] {
-          flex: 1; padding: .55rem .7rem; border-radius: 6px;
-          border: 1px solid var(--cm-border); background: var(--cm-bg); color: var(--cm-fg);
+          height: 28px;
+          padding: 0 10px;
           font: inherit;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
         }
-        .err { color: #ef4444; font-size: .85rem; }
-        details summary {
-          cursor: pointer; color: var(--cm-muted); font-size: .8rem;
+        .icon-btn:hover { background: var(--cm-surface); color: var(--cm-fg); }
+        .icon-btn:focus-visible {
+          outline: none;
+          border-color: var(--cm-border-strong);
+          box-shadow: 0 0 0 3px var(--cm-ring);
         }
-        details pre {
-          margin: .35rem 0 0 0;
-          font-size: .75rem; max-height: 200px; overflow: auto;
-          background: var(--cm-tool-bg); padding: .4rem; border-radius: 4px;
+
+        /* ---------- Conversation ---------- */
+        .log {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 20px 20px 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+          scroll-behavior: smooth;
         }
-        .hint {
-          font-size: .82rem; color: var(--cm-muted);
-          padding: .5rem .65rem; border: 1px dashed var(--cm-border); border-radius: 6px;
+        .log::-webkit-scrollbar { width: 10px; }
+        .log::-webkit-scrollbar-thumb {
+          background: var(--cm-border);
+          border-radius: 999px;
+          border: 3px solid transparent;
+          background-clip: padding-box;
         }
-        .hint code {
-          background: var(--cm-tool-bg); padding: 0 .25rem; border-radius: 3px;
+        .log::-webkit-scrollbar-thumb:hover { background: var(--cm-border-strong); background-clip: padding-box; }
+
+        .msg {
+          max-width: 100%;
+          font-size: 14px;
+          line-height: 1.6;
+          animation: cm-enter 200ms cubic-bezier(.2,.7,.1,1);
         }
+        @keyframes cm-enter {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .msg { animation: none; }
+        }
+        .msg.user {
+          align-self: flex-end;
+          max-width: 75%;
+          padding: 9px 14px;
+          border-radius: 14px 14px 4px 14px;
+          background: var(--cm-surface);
+          color: var(--cm-fg);
+          font-weight: 450;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        /* Slash commands echo as terminal-style chips, not chat bubbles —
+           they're inputs to a router, not conversation. */
+        .msg.user.cmd {
+          background: transparent;
+          border: 1px solid var(--cm-border);
+          border-radius: 6px;
+          padding: 4px 10px;
+          font-family: var(--cm-font-mono);
+          font-size: 12.5px;
+          color: var(--cm-fg-muted);
+          font-weight: 500;
+        }
+        .msg.assistant {
+          align-self: flex-start;
+          max-width: min(72ch, 100%);
+          color: var(--cm-fg);
+          word-break: break-word;
+        }
+        .msg.assistant > :first-child { margin-top: 0; }
+        .msg.assistant > :last-child  { margin-bottom: 0; }
+
+        /* ---------- Tool callouts ---------- */
+        .tool {
+          align-self: stretch;
+          font-family: var(--cm-font-mono);
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--cm-fg-muted);
+          background: var(--cm-surface);
+          border: 1px solid var(--cm-border);
+          border-radius: 8px;
+          padding: 8px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .tool > div:first-child {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .tool .glyph {
+          display: inline-flex;
+          align-items: center; justify-content: center;
+          width: 16px; height: 16px;
+          border-radius: 4px;
+          background: color-mix(in oklab, var(--cm-link) 14%, transparent);
+          color: var(--cm-link);
+          font-size: 11px;
+          flex: 0 0 auto;
+        }
+        .tool .glyph.spin {
+          background: transparent;
+          border: 1.5px solid var(--cm-border-strong);
+          border-top-color: var(--cm-link);
+          animation: cm-spin 720ms linear infinite;
+        }
+        .tool.pending strong { color: var(--cm-fg-muted); }
+        .tool.error .glyph {
+          background: color-mix(in oklab, var(--cm-danger) 14%, transparent);
+          color: var(--cm-danger);
+        }
+        .tool strong {
+          font-weight: 600;
+          color: var(--cm-fg);
+        }
+        .tool .args {
+          color: var(--cm-fg-subtle);
+          font-weight: 400;
+        }
+
+        /* ---------- Status line ---------- */
+        .status {
+          align-self: flex-start;
+          font-family: var(--cm-font-mono);
+          font-size: 11px;
+          letter-spacing: 0.02em;
+          color: var(--cm-fg-subtle);
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 0;
+        }
+        .status .spin {
+          width: 10px; height: 10px;
+          border-radius: 999px;
+          border: 1.5px solid var(--cm-border-strong);
+          border-top-color: var(--cm-fg-muted);
+          animation: cm-spin 720ms linear infinite;
+        }
+        @keyframes cm-spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+          .spin { animation: none; }
+        }
+
+        /* ---------- Confirm card ---------- */
+        .confirm {
+          align-self: stretch;
+          background: var(--cm-panel);
+          border: 1px solid var(--cm-warn-border);
+          border-radius: 12px;
+          padding: 14px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          position: relative;
+        }
+        .confirm::before {
+          content: "";
+          position: absolute; left: 0; top: 14px; bottom: 14px;
+          width: 3px;
+          background: var(--cm-warn);
+          border-radius: 0 3px 3px 0;
+        }
+        .confirm.destructive { border-color: var(--cm-danger-border); }
+        .confirm.destructive::before { background: var(--cm-danger); }
+        .confirm-label {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--cm-fg-muted);
+        }
+        .confirm.destructive .confirm-label { color: var(--cm-danger); }
+        .confirm-actions {
+          display: flex; gap: 8px; flex-wrap: wrap;
+        }
+
+        /* ---------- Buttons ---------- */
+        button {
+          font: inherit;
+          font-size: 13px;
+          font-weight: 500;
+          letter-spacing: -0.005em;
+          cursor: pointer;
+          border-radius: 8px;
+          padding: 7px 14px;
+          height: 32px;
+          border: 1px solid var(--cm-border);
+          background: var(--cm-bg);
+          color: var(--cm-fg);
+          transition: background-color 140ms ease, border-color 140ms ease,
+                      color 140ms ease, transform 140ms ease;
+        }
+        button:hover { background: var(--cm-surface); }
+        button:active { transform: translateY(0.5px); }
+        button:focus-visible {
+          outline: none;
+          border-color: var(--cm-border-strong);
+          box-shadow: 0 0 0 3px var(--cm-ring);
+        }
+        button.primary {
+          background: var(--cm-accent);
+          color: var(--cm-accent-fg);
+          border-color: var(--cm-accent);
+        }
+        button.primary:hover {
+          background: color-mix(in oklab, var(--cm-accent) 88%, transparent);
+        }
+        button.danger {
+          background: var(--cm-danger);
+          color: #fff;
+          border-color: var(--cm-danger);
+        }
+        button.danger:hover {
+          background: color-mix(in oklab, var(--cm-danger) 88%, black);
+        }
+        button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        /* ---------- Composer ---------- */
+        .form-wrap { position: relative; flex: 0 0 auto; }
+        .form {
+          display: flex;
+          gap: 8px;
+          padding: 12px 16px 16px;
+          border-top: 1px solid var(--cm-border);
+          background: var(--cm-bg);
+        }
+        .input-wrap {
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+        .input-wrap::before {
+          content: "›";
+          position: absolute; left: 14px;
+          color: var(--cm-fg-subtle);
+          font-family: var(--cm-font-mono);
+          font-size: 14px;
+          pointer-events: none;
+          transition: color 140ms ease;
+        }
+        .input-wrap:focus-within::before { color: var(--cm-fg); }
+        input[type="text"] {
+          flex: 1;
+          height: 40px;
+          padding: 0 14px 0 30px;
+          border-radius: 10px;
+          border: 1px solid var(--cm-border);
+          background: var(--cm-surface);
+          color: var(--cm-fg);
+          font: inherit;
+          font-size: 14px;
+          transition: border-color 140ms ease, background-color 140ms ease,
+                      box-shadow 140ms ease;
+        }
+        input[type="text"]::placeholder { color: var(--cm-fg-subtle); }
+        input[type="text"]:hover { background: var(--cm-surface-hover); }
+        input[type="text"]:focus {
+          outline: none;
+          background: var(--cm-bg);
+          border-color: var(--cm-border-strong);
+          box-shadow: 0 0 0 3px var(--cm-ring);
+        }
+
+        /* ---------- Autocomplete ---------- */
         .complete {
-          position: absolute; bottom: 100%; left: .6rem; right: .6rem;
-          background: var(--cm-bg); border: 1px solid var(--cm-border);
-          border-radius: 6px; box-shadow: 0 -2px 8px rgba(0,0,0,.05);
-          max-height: 220px; overflow-y: auto; margin-bottom: 4px;
+          position: absolute;
+          bottom: calc(100% - 4px);
+          left: 16px; right: 16px;
+          background: var(--cm-panel);
+          border: 1px solid var(--cm-border);
+          border-radius: 12px;
+          box-shadow: var(--cm-shadow-2);
+          max-height: 260px;
+          overflow-y: auto;
+          padding: 4px;
           display: none;
+          z-index: 10;
         }
-        .complete.show { display: block; }
+        .complete.show {
+          display: block;
+          animation: cm-enter 140ms cubic-bezier(.2,.7,.1,1);
+        }
         .complete-item {
-          padding: .35rem .6rem; cursor: pointer; font-size: .85rem;
-          display: flex; gap: .5rem; align-items: baseline;
+          padding: 8px 10px;
+          cursor: pointer;
+          font-size: 13px;
+          border-radius: 8px;
+          display: flex; gap: 12px; align-items: baseline;
+          transition: background-color 100ms ease;
         }
         .complete-item:hover, .complete-item.active {
-          background: var(--cm-tool-bg);
+          background: var(--cm-surface);
         }
         .complete-item code {
-          font-family: ui-monospace, SF Mono, Consolas, monospace;
-          font-weight: 600; color: var(--cm-accent);
+          font-family: var(--cm-font-mono);
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--cm-fg);
+          background: transparent;
+          padding: 0;
         }
-        .complete-item span { color: var(--cm-muted); font-size: .78rem; }
-        .form-wrap { position: relative; }
-        h1.md, h2.md, h3.md, h4.md { margin: .35rem 0; }
-        .md table { border-collapse: collapse; margin: .35rem 0; }
-        .md th, .md td {
+        .complete-item span {
+          color: var(--cm-fg-muted);
+          font-size: 12px;
+        }
+
+        /* ---------- Errors ---------- */
+        .err {
+          align-self: stretch;
+          color: var(--cm-danger);
+          font-size: 13px;
+          padding: 8px 12px;
+          background: var(--cm-danger-bg);
+          border: 1px solid var(--cm-danger-border);
+          border-radius: 8px;
+        }
+
+        /* ---------- Details / expandables ---------- */
+        details {
+          font-size: 12px;
+        }
+        details summary {
+          cursor: pointer;
+          color: var(--cm-fg-muted);
+          font-family: var(--cm-font-mono);
+          list-style: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        details summary::-webkit-details-marker { display: none; }
+        details summary::before {
+          content: "›";
+          display: inline-block;
+          transition: transform 140ms ease;
+        }
+        details[open] summary::before { transform: rotate(90deg); }
+        details pre {
+          margin: 8px 0 0;
+          padding: 10px 12px;
+          font-size: 12px;
+          background: var(--cm-bg);
           border: 1px solid var(--cm-border);
-          padding: .25rem .5rem; font-size: .85rem;
+          border-radius: 6px;
+          max-height: 220px;
+          overflow: auto;
         }
-        .md th { background: var(--cm-tool-bg); text-align: left; }
+
+        /* ---------- Markdown prose ---------- */
+        .md { color: var(--cm-fg); }
+        .md h1, .md h2, .md h3, .md h4 {
+          margin: 18px 0 8px;
+          line-height: 1.3;
+          letter-spacing: -0.015em;
+          font-weight: 600;
+        }
+        .md h1 { font-size: 20px; }
+        .md h2 { font-size: 17px; }
+        .md h3 { font-size: 15px; }
+        .md h4 { font-size: 13px; color: var(--cm-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .md p  { margin: 8px 0; }
+        .md ul, .md ol { margin: 8px 0; padding-left: 22px; }
+        .md li { margin: 3px 0; }
+        .md a {
+          color: var(--cm-link);
+          text-decoration: none;
+          border-bottom: 1px solid color-mix(in oklab, var(--cm-link) 35%, transparent);
+          transition: border-color 140ms ease;
+        }
+        .md a:hover { border-bottom-color: var(--cm-link); }
+        .md a:focus-visible {
+          outline: none;
+          border-radius: 2px;
+          box-shadow: 0 0 0 3px var(--cm-ring);
+        }
         .md code {
-          background: var(--cm-tool-bg); padding: 0 .25rem; border-radius: 3px;
-          font-size: .85em;
+          font-family: var(--cm-font-mono);
+          font-size: 0.88em;
+          background: var(--cm-surface);
+          border: 1px solid var(--cm-border);
+          padding: 0.5px 5px;
+          border-radius: 5px;
         }
         .md pre {
-          background: var(--cm-tool-bg); padding: .5rem; border-radius: 6px;
-          overflow-x: auto; font-size: .78rem;
+          margin: 12px 0;
+          background: var(--cm-surface);
+          border: 1px solid var(--cm-border);
+          border-radius: 10px;
+          padding: 12px 14px;
+          overflow-x: auto;
+          font-size: 12.5px;
+          line-height: 1.55;
+        }
+        .md pre code {
+          background: transparent;
+          border: none;
+          padding: 0;
+          font-size: inherit;
+        }
+        .md table {
+          border-collapse: collapse;
+          margin: 12px 0;
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+        }
+        .md th, .md td {
+          border-bottom: 1px solid var(--cm-border);
+          padding: 8px 12px;
+          text-align: left;
+          vertical-align: top;
+        }
+        .md th {
+          font-weight: 600;
+          color: var(--cm-fg-muted);
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          background: transparent;
+          border-bottom: 1px solid var(--cm-border-strong);
+        }
+        .md tr:last-child td { border-bottom: none; }
+        .md td.empty { color: var(--cm-fg-subtle); }
+        .md strong { font-weight: 600; }
+        .md em { font-style: italic; }
+        .md hr {
+          border: none;
+          border-top: 1px solid var(--cm-border);
+          margin: 16px 0;
+        }
+
+        /* ---------- Hint ---------- */
+        .hint {
+          align-self: flex-start;
+          font-size: 12.5px;
+          color: var(--cm-fg-subtle);
+          padding: 0;
+          background: transparent;
+          border: none;
+          line-height: 1.6;
+          letter-spacing: 0;
+        }
+        .hint code {
+          font-family: var(--cm-font-mono);
+          font-size: 11.5px;
+          background: var(--cm-surface);
+          color: var(--cm-fg-muted);
+          padding: 1px 6px;
+          border-radius: 4px;
+          border: 1px solid var(--cm-border);
+          margin: 0 2px;
+        }
+
+        /* ---------- Small viewport ---------- */
+        @media (max-width: 520px) {
+          .header { padding: 0 12px; }
+          .log { padding: 14px 14px 4px; gap: 14px; }
+          .form { padding: 10px 12px 12px; }
+          .msg.user { max-width: 88%; }
         }
       </style>
-      <div class="card">
-        <div class="header">
-          <span class="dot"></span>
-          <span>CertMate-Agent</span>
-          <span id="mode-badge"
-                style="display:none;font-size:.7rem;padding:.1rem .4rem;
-                       border-radius:4px;background:rgba(0,0,0,.08);
-                       color:var(--cm-muted);text-transform:uppercase;
-                       letter-spacing:.05em;">docs only</span>
-          <span style="flex:1"></span>
-          <button id="new-session" type="button" title="Start a fresh session"
-                  style="display:none">New session</button>
-        </div>
-        <div class="log" id="log"></div>
+      <div class="card" role="region" aria-label="CertMate Agent">
+        <header class="header">
+          <span class="brand">
+            <span class="dot" aria-hidden="true"></span>
+            <span>CertMate Agent</span>
+          </span>
+          <span id="mode-badge" class="badge" style="display:none" aria-hidden="true">docs only</span>
+          <span class="spacer"></span>
+          <button id="new-session" class="icon-btn" type="button"
+                  title="Start a fresh session"
+                  style="display:none"
+                  aria-label="Start a fresh session">New session</button>
+        </header>
+        <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions"></div>
         <div class="form-wrap">
-          <div class="complete" id="complete"></div>
+          <div class="complete" id="complete" role="listbox" aria-label="Slash commands"></div>
           <form class="form" id="form">
-            <input type="text" id="input"
-                   placeholder="Type / for commands, or ask anything"
-                   autocomplete="off" />
-            <button class="primary" type="submit" id="send">Send</button>
+            <label class="input-wrap" for="input-cm">
+              <input type="text" id="input"
+                     placeholder="Ask anything, or type / for commands"
+                     autocomplete="off"
+                     autocapitalize="off"
+                     autocorrect="off"
+                     spellcheck="false"
+                     aria-label="Message" />
+            </label>
+            <button class="primary" type="submit" id="send" aria-label="Send message">Send</button>
           </form>
         </div>
       </div>
@@ -397,6 +858,7 @@ class CertMateAgent extends HTMLElement {
   _addUser(text) {
     const el = document.createElement("div");
     el.className = "msg user";
+    if (text.startsWith("/")) el.classList.add("cmd");
     el.textContent = text;
     this._logEl.appendChild(el);
     this._scroll();
@@ -405,10 +867,17 @@ class CertMateAgent extends HTMLElement {
   _addAssistant(text) {
     const el = document.createElement("div");
     el.className = "msg assistant md";
-    el.innerHTML = this._md(text);
+    el.innerHTML = this._prettify(this._md(text));
     this._logEl.appendChild(el);
     this._scroll();
     return el;
+  }
+
+  // Post-render polish: e.g. replace literal "None" cells with em-dash.
+  _prettify(html) {
+    return html
+      .replace(/<td>None<\/td>/g, '<td class="empty">—</td>')
+      .replace(/<td>null<\/td>/g, '<td class="empty">—</td>');
   }
 
   // Minimal markdown: escape HTML first, then render fences, inline code,
@@ -497,24 +966,60 @@ class CertMateAgent extends HTMLElement {
   }
 
   _addTool(name, args, result, ok = true) {
+    // If this is a tool_result (result !== undefined) and we have a
+    // matching pending tool_call card on screen, fold the result into
+    // it instead of stacking a duplicate row.
+    const pending = this._pendingTools && this._pendingTools[name];
+    if (result !== undefined && pending) {
+      pending.classList.remove("pending");
+      if (!ok) pending.classList.add("error");
+      const glyph = pending.querySelector(".glyph");
+      if (glyph) glyph.textContent = ok ? "→" : "×";
+      pending.insertAdjacentHTML(
+        "beforeend",
+        `<details><summary>result</summary><pre>${this._escape(
+          typeof result === "string" ? result : JSON.stringify(result, null, 2),
+        )}</pre></details>`,
+      );
+      delete this._pendingTools[name];
+      this._scroll();
+      return;
+    }
+
     const el = document.createElement("div");
-    el.className = "tool" + (ok ? "" : " error");
+    el.className = "tool" + (ok ? "" : " error") + (result === undefined ? " pending" : "");
+    const hasArgs = args && Object.keys(args).length > 0;
+    const argsStr = hasArgs ? this._escape(JSON.stringify(args)) : "";
+    const glyph = result === undefined
+      ? `<span class="glyph spin" aria-hidden="true"></span>`
+      : `<span class="glyph" aria-hidden="true">${ok ? "→" : "×"}</span>`;
     el.innerHTML = `
-      <div>${ok ? "→" : "✗"} <strong>${name}</strong>(${this._escape(JSON.stringify(args))})</div>
+      <div>
+        ${glyph}
+        <strong>${this._escape(name)}</strong>${hasArgs ? `<span class="args">(${argsStr})</span>` : ""}
+      </div>
       ${result !== undefined ? `<details><summary>result</summary><pre>${this._escape(typeof result === "string" ? result : JSON.stringify(result, null, 2))}</pre></details>` : ""}
     `;
     this._logEl.appendChild(el);
+    if (result === undefined) {
+      if (!this._pendingTools) this._pendingTools = {};
+      this._pendingTools[name] = el;
+    }
     this._scroll();
   }
 
   _addConfirm(payload) {
     const el = document.createElement("div");
-    el.className = "confirm" + (payload.kind === "write_destructive" ? " destructive" : "");
+    const isDestructive = payload.kind === "write_destructive";
+    el.className = "confirm" + (isDestructive ? " destructive" : "");
+    el.setAttribute("role", "alertdialog");
+    el.setAttribute("aria-label", "Confirm action");
     el.innerHTML = `
-      <div><strong>Proposed action:</strong> ${this._escape(payload.summary)}</div>
+      <div class="confirm-label">${isDestructive ? "Destructive action" : "Proposed action"}</div>
+      <div>${this._escape(payload.summary)}</div>
       <details><summary>${this._escape(payload.tool)} arguments</summary><pre>${this._escape(JSON.stringify(payload.args, null, 2))}</pre></details>
       <div class="confirm-actions">
-        <button class="${payload.kind === "write_destructive" ? "danger" : "primary"}" data-act="exec">Execute</button>
+        <button class="${isDestructive ? "danger" : "primary"}" data-act="exec">${isDestructive ? "Confirm & run" : "Execute"}</button>
         <button data-act="cancel">Cancel</button>
       </div>
     `;
@@ -547,7 +1052,8 @@ class CertMateAgent extends HTMLElement {
   _addError(msg) {
     const el = document.createElement("div");
     el.className = "err";
-    el.textContent = "⚠ " + msg;
+    el.setAttribute("role", "alert");
+    el.textContent = msg;
     this._logEl.appendChild(el);
     this._scroll();
   }
@@ -635,7 +1141,7 @@ class CertMateAgent extends HTMLElement {
     if (this._streamingEl) {
       const text = finalText || this._streamingText;
       this._streamingEl.classList.remove("streaming");
-      this._streamingEl.innerHTML = this._md(text);
+      this._streamingEl.innerHTML = this._prettify(this._md(text));
       this._streamingEl = null;
       this._streamingText = "";
       this._scroll();
@@ -661,8 +1167,12 @@ class CertMateAgent extends HTMLElement {
     }
 
     if (event === "token") {
+      this._clearStatus();
       this._appendStreamToken(data.text || "");
+    } else if (event === "status") {
+      this._setStatus(data.message || "");
     } else if (event === "tool_call") {
+      this._clearStatus();
       // Tool calls interrupt streaming: finalize whatever we had, then
       // render the tool entry. The next iteration may stream a fresh bubble.
       if (this._streamingEl && this._streamingText) this._finalizeStream();
@@ -673,21 +1183,47 @@ class CertMateAgent extends HTMLElement {
       }
       this._addTool(data.name, data.args, undefined, true);
     } else if (event === "tool_result") {
+      this._clearStatus();
       this._addTool(data.name, {}, data.preview, data.ok !== false);
     } else if (event === "pending_confirm") {
+      this._clearStatus();
       this._addConfirm(data);
     } else if (event === "message") {
+      this._clearStatus();
       // Server sends a final message event even when streaming, so prefer
       // the streamed text we already have (avoids double-rendering).
       const text = this._finalizeStream(data.content);
       onFinalMessage(text);
     } else if (event === "error") {
+      this._clearStatus();
       if (this._streamingEl) {
         this._streamingEl.remove();
         this._streamingEl = null;
         this._streamingText = "";
       }
       this._addError(data.message);
+    } else if (event === "done") {
+      this._clearStatus();
+    }
+  }
+
+  _setStatus(text) {
+    if (!this._statusEl) {
+      this._statusEl = document.createElement("div");
+      this._statusEl.className = "status";
+      this._statusEl.setAttribute("role", "status");
+      this._statusEl.innerHTML =
+        '<span class="spin" aria-hidden="true"></span><span class="status-text"></span>';
+      this._logEl.appendChild(this._statusEl);
+    }
+    this._statusEl.querySelector(".status-text").textContent = text;
+    this._scroll();
+  }
+
+  _clearStatus() {
+    if (this._statusEl) {
+      this._statusEl.remove();
+      this._statusEl = null;
     }
   }
 }

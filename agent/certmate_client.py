@@ -75,24 +75,24 @@ class CertMateClient:
 
     # ---- read: health / metrics / diagnostics ----
     async def system_health(self) -> Any:
-        return await self._req("GET", "/health/")
+        return await self._req("GET", "/health")
 
     async def metrics_info(self) -> Any:
-        return await self._req("GET", "/metrics/")
+        return await self._req("GET", "/metrics")
 
     async def diagnostics_snapshot(self) -> Any:
         return await self._req("GET", "/diagnostics/snapshot")
 
     # ---- read: settings ----
     async def settings_get(self) -> Any:
-        return await self._req("GET", "/settings/")
+        return await self._req("GET", "/settings")
 
     async def dns_providers_info(self) -> Any:
         return await self._req("GET", "/settings/dns-providers")
 
     # ---- read: certificates ----
     async def cert_list(self) -> Any:
-        return await self._req("GET", "/certificates/")
+        return await self._req("GET", "/certificates")
 
     async def cert_get(self, domain: str) -> Any:
         return await self._req("GET", f"/certificates/{domain}")
@@ -114,13 +114,13 @@ class CertMateClient:
 
     # ---- read: backups / storage / client-certs ----
     async def backups_list(self) -> Any:
-        return await self._req("GET", "/backups/")
+        return await self._req("GET", "/backups")
 
     async def storage_info(self) -> Any:
         return await self._req("GET", "/storage/info")
 
     async def client_certs_list(self) -> Any:
-        return await self._req("GET", "/client-certs/")
+        return await self._req("GET", "/client-certs")
 
     # ---- write: certificates ----
     async def cert_create(self, payload: dict[str, Any]) -> Any:
@@ -139,7 +139,7 @@ class CertMateClient:
 
     # ---- write: settings / cache / ca ----
     async def settings_update(self, payload: dict[str, Any]) -> Any:
-        return await self._req("PUT", "/settings/", json_body=payload)
+        return await self._req("PUT", "/settings", json_body=payload)
 
     async def ca_provider_test(self, payload: dict[str, Any]) -> Any:
         return await self._req("POST", "/settings/test-ca-provider", json_body=payload)

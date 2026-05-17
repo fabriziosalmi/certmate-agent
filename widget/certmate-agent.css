@@ -1,24 +1,78 @@
 certmate-agent {
   display: block;
-  --cm-fg: #1f2937;
-  --cm-muted: #6b7280;
+
+  /* Type */
+  --cm-font-sans: ui-sans-serif, -apple-system, "Inter", "SF Pro Text",
+    "Segoe UI", system-ui, sans-serif;
+  --cm-font-mono: ui-monospace, "Geist Mono", "JetBrains Mono", "SF Mono",
+    "Menlo", "Consolas", monospace;
+
+  /* Surfaces (zinc scale) */
   --cm-bg: #ffffff;
-  --cm-border: #e5e7eb;
-  --cm-accent: #2563eb;
-  --cm-warn-bg: #fef3c7;
-  --cm-warn-border: #f59e0b;
-  --cm-danger-bg: #fee2e2;
-  --cm-danger-border: #ef4444;
-  --cm-tool-bg: #f3f4f6;
+  --cm-panel: #fafafa;
+  --cm-surface: #f4f4f5;
+  --cm-surface-hover: #ececef;
+
+  /* Foreground */
+  --cm-fg: #0a0a0a;
+  --cm-fg-muted: #52525b;
+  --cm-fg-subtle: #a1a1aa;
+
+  /* Hairlines */
+  --cm-border: rgba(0, 0, 0, 0.08);
+  --cm-border-strong: rgba(0, 0, 0, 0.14);
+
+  /* Accents */
+  --cm-accent: #0a0a0a;          /* primary CTA = inverse of bg */
+  --cm-accent-fg: #ffffff;
+  --cm-link: #2563eb;            /* secondary accent for links/active */
+  --cm-ring: color-mix(in oklab, #0a0a0a 22%, transparent);
+
+  /* States */
+  --cm-success: #16a34a;
+  --cm-warn: #b45309;
+  --cm-warn-bg: rgba(245, 158, 11, 0.10);
+  --cm-warn-border: rgba(245, 158, 11, 0.35);
+  --cm-danger: #dc2626;
+  --cm-danger-bg: rgba(239, 68, 68, 0.10);
+  --cm-danger-border: rgba(239, 68, 68, 0.40);
+
+  /* Elevation (single, hair-thin) */
+  --cm-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --cm-shadow-2: 0 8px 24px -12px rgba(0, 0, 0, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.08);
+
+  /* Legacy aliases kept for back-compat */
+  --cm-tool-bg: var(--cm-surface);
 }
+
 @media (prefers-color-scheme: dark) {
   certmate-agent {
-    --cm-fg: #e5e7eb;
-    --cm-muted: #9ca3af;
-    --cm-bg: #0f172a;
-    --cm-border: #1f2937;
-    --cm-tool-bg: #111827;
-    --cm-warn-bg: #422006;
-    --cm-danger-bg: #450a0a;
+    --cm-bg: #0a0a0a;
+    --cm-panel: #101012;
+    --cm-surface: #161618;
+    --cm-surface-hover: #1d1d20;
+
+    --cm-fg: #fafafa;
+    --cm-fg-muted: #a1a1aa;
+    --cm-fg-subtle: #52525b;
+
+    --cm-border: rgba(255, 255, 255, 0.08);
+    --cm-border-strong: rgba(255, 255, 255, 0.16);
+
+    --cm-accent: #fafafa;
+    --cm-accent-fg: #0a0a0a;
+    --cm-link: #60a5fa;
+    --cm-ring: color-mix(in oklab, #fafafa 28%, transparent);
+
+    --cm-success: #22c55e;
+    --cm-warn: #fbbf24;
+    --cm-warn-bg: rgba(245, 158, 11, 0.10);
+    --cm-warn-border: rgba(245, 158, 11, 0.30);
+    --cm-danger: #f87171;
+    --cm-danger-bg: rgba(239, 68, 68, 0.12);
+    --cm-danger-border: rgba(239, 68, 68, 0.35);
+
+    --cm-shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03);
+    --cm-shadow-2: 0 12px 28px -10px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.35);
   }
 }

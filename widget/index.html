@@ -3,36 +3,94 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CertMate-Agent — test page</title>
+  <meta name="color-scheme" content="light dark" />
+  <title>CertMate Agent</title>
   <link rel="stylesheet" href="certmate-agent.css" />
   <style>
+    :root {
+      --page-bg: #fafafa;
+      --page-fg: #0a0a0a;
+      --page-muted: #52525b;
+      --page-border: rgba(0, 0, 0, 0.08);
+      --page-kbd-bg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page-bg: #0a0a0a;
+        --page-fg: #fafafa;
+        --page-muted: #a1a1aa;
+        --page-border: rgba(255, 255, 255, 0.08);
+        --page-kbd-bg: #161618;
+      }
+    }
     html, body { height: 100%; margin: 0; }
     body {
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-family: ui-sans-serif, -apple-system, "Inter", "SF Pro Text",
+        "Segoe UI", system-ui, sans-serif;
+      font-feature-settings: "cv11", "ss01", "ss03", "kern", "calt";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background: var(--page-bg);
+      color: var(--page-fg);
       display: grid;
-      grid-template-columns: 1fr;
       grid-template-rows: auto 1fr;
-      background: #fafafa;
     }
-    @media (prefers-color-scheme: dark) {
-      body { background: #0c0c0d; color: #e5e5e5; }
+    header.topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--page-border);
+      font-size: 13px;
     }
-    header {
-      padding: .75rem 1.2rem;
-      border-bottom: 1px solid rgba(0,0,0,.08);
-      display: flex; align-items: baseline; gap: 1rem;
-      font-size: .85rem;
+    .topbar .logo {
+      width: 24px; height: 24px;
+      border-radius: 7px;
+      background: var(--page-fg);
+      color: var(--page-bg);
+      display: inline-flex;
+      align-items: center; justify-content: center;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: -0.02em;
     }
-    @media (prefers-color-scheme: dark) {
-      header { border-bottom-color: rgba(255,255,255,.08); }
+    .topbar h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0;
     }
-    header h1 { font-size: 1rem; margin: 0; }
-    header .muted { color: #666; }
-    @media (prefers-color-scheme: dark) {
-      header .muted { color: #999; }
+    .topbar .sep {
+      width: 1px; height: 18px;
+      background: var(--page-border);
     }
+    .topbar .meta {
+      color: var(--page-muted);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .topbar kbd {
+      font-family: ui-monospace, "Geist Mono", "JetBrains Mono", "SF Mono", "Menlo", monospace;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--page-kbd-bg);
+      border: 1px solid var(--page-border);
+      color: var(--page-fg);
+      box-shadow: 0 1px 0 var(--page-border);
+    }
+    .topbar .grow { flex: 1; }
+    .topbar a {
+      color: var(--page-muted);
+      text-decoration: none;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background-color 140ms ease, color 140ms ease;
+    }
+    .topbar a:hover { background: var(--page-kbd-bg); color: var(--page-fg); }
+
     main {
-      min-height: 0;          /* let the widget shrink/grow inside the grid */
+      min-height: 0;
       display: flex;
     }
     certmate-agent {
@@ -42,11 +100,15 @@
   </style>
 </head>
 <body>
-  <header>
-    <h1>CertMate-Agent</h1>
-    <span class="muted">Local test page — full-viewport. Embed elsewhere as
-      <code>&lt;certmate-agent endpoint="…"&gt;&lt;/certmate-agent&gt;</code>.
+  <header class="topbar">
+    <span class="logo" aria-hidden="true">C</span>
+    <h1>CertMate Agent</h1>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="meta">
+      Type <kbd>/</kbd> for commands &middot; <kbd>↵</kbd> to send
     </span>
+    <span class="grow"></span>
+    <a href="https://github.com/fabriziosalmi/certmate" target="_blank" rel="noopener">Docs</a>
   </header>
   <main>
     <certmate-agent fill endpoint="http://127.0.0.1:8770"></certmate-agent>
