@@ -122,11 +122,21 @@ async def run_turn(
     slash_gen = await slash.dispatch(user_message, is_admin=is_admin)
     if slash_gen is not None:
         audit("turn", "slash", detail=user_message[:200])
+        last_assistant_text: str | None = None
         async for ev in slash_gen:
+            # Capture the slash handler's final message so persisted history
+            # reflects both sides of the exchange, not just the user's input.
+            if ev.get("event") == "message":
+                data = ev.get("data") or {}
+                if data.get("role") == "assistant" and isinstance(data.get("content"), str):
+                    last_assistant_text = data["content"]
             yield ev
-        # Still record slash commands so the session feels continuous.
         if settings.agent_persist_conversations and session_id:
             await asyncio.to_thread(conversation_append, session_id, "user", user_message)
+            if last_assistant_text:
+                await asyncio.to_thread(
+                    conversation_append, session_id, "assistant", last_assistant_text
+                )
         return
 
     use_persistence = bool(settings.agent_persist_conversations and session_id)
@@ -193,11 +203,15 @@ async def run_turn(
                 if v.get("name")
             ]
 
-            messages.append({
+            assistant_msg: dict[str, Any] = {
                 "role": "assistant",
                 "content": assistant_content,
-                "tool_calls": tool_calls if tool_calls else None,
-            })
+            }
+            # Omit tool_calls entirely when empty — strict OpenAI-compatible
+            # providers (e.g. OpenRouter routing some upstreams) reject `null`.
+            if tool_calls:
+                assistant_msg["tool_calls"] = tool_calls
+            messages.append(assistant_msg)
 
             if not tool_calls:
                 # Final answer fully streamed already.
@@ -287,6 +301,17 @@ async def run_turn(
                 # Let model produce the user-facing explanation in next iteration.
                 continue
 
+        # Tool-call loop bailout: persist what we have so the user's question
+        # isn't lost on retry, and so a follow-up turn sees this turn in
+        # context. Use a placeholder for the assistant slot if it produced
+        # nothing intelligible.
+        if use_persistence:
+            await asyncio.to_thread(conversation_append, session_id, "user", user_message)
+            placeholder = (
+                final_assistant_text
+                or f"(no answer: exceeded {settings.agent_max_tool_iterations} tool iterations)"
+            )
+            await asyncio.to_thread(conversation_append, session_id, "assistant", placeholder)
         yield {"event": "error",
                "data": {"message":
                         f"Exceeded {settings.agent_max_tool_iterations} tool iterations"}}

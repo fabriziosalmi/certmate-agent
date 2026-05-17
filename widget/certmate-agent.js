@@ -80,6 +80,24 @@ class CertMateAgent extends HTMLElement {
         badge.style.display = "none";
       }
     }
+    // In fill mode the header is hidden, so the badge there is too. Surface
+    // the docs_only state as a minimal ribbon above the log so users still
+    // know they're talking to the public docs assistant, not a live agent.
+    if (this.fill) {
+      const log = this._logEl;
+      let ribbon = this._shadow.getElementById("mode-ribbon");
+      if (this.serverMode === "docs_only") {
+        if (!ribbon && log) {
+          ribbon = document.createElement("div");
+          ribbon.id = "mode-ribbon";
+          ribbon.className = "ribbon";
+          ribbon.textContent = "Docs-only mode · no live CertMate connection";
+          log.prepend(ribbon);
+        }
+      } else if (ribbon) {
+        ribbon.remove();
+      }
+    }
     this._swapHintForMode();
   }
 
@@ -121,6 +139,7 @@ class CertMateAgent extends HTMLElement {
 
   async _newSession() {
     if (!this.persist) return;
+    if (this._abortCtl) this._abortCtl.abort();
     try {
       await fetch(
         `${this.endpoint}/conversations/${encodeURIComponent(this.sessionId)}`,
@@ -709,6 +728,31 @@ class CertMateAgent extends HTMLElement {
           margin: 0 2px;
         }
 
+        /* ---------- Mode ribbon (fill mode only) ---------- */
+        .ribbon {
+          align-self: stretch;
+          font-family: var(--cm-font-mono);
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--cm-fg-muted);
+          padding: 6px 10px;
+          background: var(--cm-surface);
+          border: 1px solid var(--cm-border);
+          border-radius: 6px;
+          text-align: center;
+        }
+
+        /* ---------- Confirm summary markdown ---------- */
+        .confirm-summary code {
+          font-family: var(--cm-font-mono);
+          font-size: 0.88em;
+          background: var(--cm-bg);
+          border: 1px solid var(--cm-border);
+          padding: 0.5px 5px;
+          border-radius: 5px;
+        }
+
         /* ---------- Small viewport ---------- */
         @media (max-width: 520px) {
           .header { padding: 0 12px; }
@@ -966,22 +1010,27 @@ class CertMateAgent extends HTMLElement {
   }
 
   _addTool(name, args, result, ok = true) {
-    // If this is a tool_result (result !== undefined) and we have a
-    // matching pending tool_call card on screen, fold the result into
-    // it instead of stacking a duplicate row.
-    const pending = this._pendingTools && this._pendingTools[name];
-    if (result !== undefined && pending) {
+    // Pending tool_call cards are held in a FIFO queue per tool name, so
+    // back-to-back invocations of the same tool match in invocation order
+    // (oldest pending pairs with the next arriving tool_result).
+    if (!this._pendingTools) this._pendingTools = {};
+    const queue = this._pendingTools[name];
+    if (result !== undefined && queue && queue.length) {
+      const pending = queue.shift();
+      if (queue.length === 0) delete this._pendingTools[name];
       pending.classList.remove("pending");
       if (!ok) pending.classList.add("error");
       const glyph = pending.querySelector(".glyph");
-      if (glyph) glyph.textContent = ok ? "→" : "×";
+      if (glyph) {
+        glyph.classList.remove("spin");
+        glyph.textContent = ok ? "→" : "×";
+      }
       pending.insertAdjacentHTML(
         "beforeend",
         `<details><summary>result</summary><pre>${this._escape(
           typeof result === "string" ? result : JSON.stringify(result, null, 2),
         )}</pre></details>`,
       );
-      delete this._pendingTools[name];
       this._scroll();
       return;
     }
@@ -1002,8 +1051,7 @@ class CertMateAgent extends HTMLElement {
     `;
     this._logEl.appendChild(el);
     if (result === undefined) {
-      if (!this._pendingTools) this._pendingTools = {};
-      this._pendingTools[name] = el;
+      (this._pendingTools[name] ||= []).push(el);
     }
     this._scroll();
   }
@@ -1016,7 +1064,7 @@ class CertMateAgent extends HTMLElement {
     el.setAttribute("aria-label", "Confirm action");
     el.innerHTML = `
       <div class="confirm-label">${isDestructive ? "Destructive action" : "Proposed action"}</div>
-      <div>${this._escape(payload.summary)}</div>
+      <div class="confirm-summary md">${this._md(payload.summary || "")}</div>
       <details><summary>${this._escape(payload.tool)} arguments</summary><pre>${this._escape(JSON.stringify(payload.args, null, 2))}</pre></details>
       <div class="confirm-actions">
         <button class="${isDestructive ? "danger" : "primary"}" data-act="exec">${isDestructive ? "Confirm & run" : "Execute"}</button>
@@ -1080,6 +1128,10 @@ class CertMateAgent extends HTMLElement {
     this._addUser(text);
 
     let assistantText = "";
+    let turnSucceeded = false;
+    // Allow aborting the in-flight stream (page unload, _newSession, etc.)
+    if (this._abortCtl) this._abortCtl.abort();
+    this._abortCtl = new AbortController();
 
     try {
       const headers = { "Content-Type": "application/json" };
@@ -1090,8 +1142,10 @@ class CertMateAgent extends HTMLElement {
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal: this._abortCtl.signal,
       });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+      turnSucceeded = true;
 
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
@@ -1109,14 +1163,22 @@ class CertMateAgent extends HTMLElement {
         }
       }
     } catch (err) {
-      this._addError(String(err));
+      if (err && err.name === "AbortError") {
+        // user-initiated abort — say nothing
+      } else {
+        this._addError(String(err));
+      }
     } finally {
       this._busy = false;
       this._sendEl.disabled = false;
       this._inputEl.focus();
-      this._history.push({ role: "user", content: text });
-      if (assistantText) {
-        this._history.push({ role: "assistant", content: assistantText });
+      // Only persist locally on a turn that the server actually accepted.
+      // Otherwise a retry would duplicate the user message in history.
+      if (turnSucceeded) {
+        this._history.push({ role: "user", content: text });
+        if (assistantText) {
+          this._history.push({ role: "assistant", content: assistantText });
+        }
       }
     }
   }

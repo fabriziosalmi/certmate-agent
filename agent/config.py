@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     #                    Used for agent.certmate.org-style deployments.
     agent_mode: AgentMode = "full"
 
-    lmstudio_url: str = "http://100.66.12.82:1234/v1"
+    # Defaults to the LM Studio default port on the same host. Override via
+    # env (LMSTUDIO_URL) — e.g. a Tailscale IP for a remote workstation, or
+    # a Cloudflare Workers AI endpoint in production.
+    lmstudio_url: str = "http://127.0.0.1:1234/v1"
     lmstudio_chat_model: str = "google/gemma-4-e2b"
     lmstudio_embed_model: str = "text-embedding-embeddinggemma-300m"
     lmstudio_api_key: str = "lm-studio"

@@ -98,8 +98,8 @@ async def _system_health(c, _args):
 
 
 async def _system_overview(c, _args):
-    health = await c.system_health()
-    certs = await c.cert_list()
+    import asyncio as _asyncio
+    health, certs = await _asyncio.gather(c.system_health(), c.cert_list())
     expiring_soon = []
     if isinstance(certs, list):
         for item in certs:

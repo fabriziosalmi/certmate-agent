@@ -129,15 +129,21 @@ _PERSISTED_ROLES = {"user", "assistant"}
 
 
 def conversation_load(session_id: str, limit: int = 200) -> list[dict[str, Any]]:
-    """Return the persisted message history for a session_id, ordered chronologically."""
+    """Return the most recent `limit` messages for a session_id, oldest first.
+
+    We pull the last N by descending id (cheap on the (session_id, ts) index)
+    then reverse in Python so the LLM sees chronological order. Using ASC LIMIT
+    would silently truncate the *latest* turns on long sessions.
+    """
     if not session_id:
         return []
     with _conn() as c:
         rows = c.execute(
             "SELECT role, content FROM conversation_messages "
-            "WHERE session_id=? ORDER BY id ASC LIMIT ?",
+            "WHERE session_id=? ORDER BY id DESC LIMIT ?",
             (session_id, limit),
         ).fetchall()
+    rows.reverse()
     return [{"role": r["role"], "content": r["content"]} for r in rows]
 
 

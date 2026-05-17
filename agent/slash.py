@@ -107,6 +107,22 @@ def _emit_done() -> dict[str, Any]:
     return {"event": "done", "data": {}}
 
 
+def _json_codeblock(data: Any, max_chars: int = 1600) -> str:
+    """Render JSON inside a fenced code block, truncating safely.
+
+    We cut on a newline boundary when possible and append an ellipsis line so
+    the closing ``` is never lost in mid-token, which would leak markdown
+    state into the rest of the assistant message.
+    """
+    text = json.dumps(data, indent=2, default=str)
+    if len(text) <= max_chars:
+        return f"```json\n{text}\n```"
+    cut = text.rfind("\n", 0, max_chars)
+    if cut < max_chars // 2:  # no decent boundary; hard cut
+        cut = max_chars
+    return f"```json\n{text[:cut]}\n  …truncated ({len(text) - cut} more chars)\n```"
+
+
 async def _run_read(
     tool_name: str,
     args: dict[str, Any],
@@ -331,7 +347,7 @@ async def _h_providers(_argv: list[str], _is_admin: bool = False) -> AsyncGenera
         yield ev
     ok, data = _unpack(box)
     if ok:
-        yield _emit_message(f"```json\n{json.dumps(data, indent=2)[:1600]}\n```")
+        yield _emit_message(_json_codeblock(data))
     else:
         yield _emit_message("Could not fetch DNS providers.")
     yield _emit_done()
@@ -346,7 +362,7 @@ async def _h_accounts(argv: list[str], _is_admin: bool = False) -> AsyncGenerato
         yield ev
     ok, data = _unpack(box)
     if ok:
-        yield _emit_message(f"```json\n{json.dumps(data, indent=2)[:1600]}\n```")
+        yield _emit_message(_json_codeblock(data))
     else:
         yield _emit_message("Could not list DNS accounts.")
     yield _emit_done()
@@ -358,7 +374,7 @@ async def _h_backups(_argv: list[str], _is_admin: bool = False) -> AsyncGenerato
         yield ev
     ok, data = _unpack(box)
     if ok:
-        yield _emit_message(f"```json\n{json.dumps(data, indent=2)[:1600]}\n```")
+        yield _emit_message(_json_codeblock(data))
     else:
         yield _emit_message("Could not list backups.")
     yield _emit_done()

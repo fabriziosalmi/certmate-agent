@@ -60,17 +60,24 @@ class SearchHit:
     score: float
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    num = 0.0
-    na = 0.0
-    nb = 0.0
+def _norm(v: list[float]) -> float:
+    s = 0.0
+    for x in v:
+        s += x * x
+    return math.sqrt(s)
+
+
+def _dot(a: list[float], b: list[float]) -> float:
+    s = 0.0
     for x, y in zip(a, b):
-        num += x * y
-        na += x * x
-        nb += y * y
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return num / (math.sqrt(na) * math.sqrt(nb))
+        s += x * y
+    return s
+
+
+# Minimum cosine similarity we'll surface as a hit. Anything below this is
+# noise (random query against unrelated corpus) — better to return nothing
+# and let the assistant say "no relevant docs" than to cite irrelevance.
+_MIN_SCORE = 0.15
 
 
 class RagStore:
@@ -78,6 +85,10 @@ class RagStore:
         self.path = path
         self._index: Index | None = None
         self._loaded_at: float | None = None
+        # Pre-normalized chunk vectors. With unit-length vectors cosine
+        # similarity collapses to a single dot product per chunk, dropping
+        # the per-query sqrt and one half of the FLOPs.
+        self._unit_chunks: list[list[float]] = []
 
     @property
     def ready(self) -> bool:
@@ -109,6 +120,7 @@ class RagStore:
             with self.path.open("rb") as f:
                 self._index = pickle.load(f)
             self._loaded_at = time.time()
+            self._unit_chunks = self._normalize_chunks(self._index.chunks)
             log.info("RAG index loaded: %d chunks (%s)",
                      len(self._index.chunks), self._index.embed_model)
             self._warn_if_model_mismatch()
@@ -116,7 +128,19 @@ class RagStore:
         except Exception as e:  # pragma: no cover - defensive
             log.error("Failed to load RAG index from %s: %s", self.path, e)
             self._index = None
+            self._unit_chunks = []
             return False
+
+    @staticmethod
+    def _normalize_chunks(chunks: list[IndexedChunk]) -> list[list[float]]:
+        out: list[list[float]] = []
+        for c in chunks:
+            n = _norm(c.embedding)
+            if n == 0.0:
+                out.append(c.embedding)
+            else:
+                out.append([x / n for x in c.embedding])
+        return out
 
     def _warn_if_model_mismatch(self) -> None:
         """If the runtime embed model differs from the index's, cosine
@@ -138,19 +162,28 @@ class RagStore:
         return self.load()
 
     def search(self, query_embedding: list[float], k: int = 3) -> list[SearchHit]:
-        if not self._index or not query_embedding:
+        if not self._index or not query_embedding or not self._unit_chunks:
             return []
+        # Take a local snapshot so a concurrent reload() can't swap the
+        # vector list out from under the loop mid-search.
+        chunks = self._index.chunks
+        unit_chunks = self._unit_chunks
+        qn = _norm(query_embedding)
+        if qn == 0.0:
+            return []
+        unit_q = [x / qn for x in query_embedding]
         scored: list[tuple[float, IndexedChunk]] = [
-            (_cosine(query_embedding, c.embedding), c) for c in self._index.chunks
+            (_dot(unit_q, uc), c) for uc, c in zip(unit_chunks, chunks)
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
-        top = scored[:k]
-        return [
-            SearchHit(
+        out: list[SearchHit] = []
+        for score, c in scored[:k]:
+            if score < _MIN_SCORE:
+                break  # sorted; everything after this is also under the floor
+            out.append(SearchHit(
                 text=c.text, title=c.title, source=c.source, url=c.url, score=score,
-            )
-            for score, c in top
-        ]
+            ))
+        return out
 
 
 _store: RagStore | None = None

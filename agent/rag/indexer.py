@@ -94,8 +94,18 @@ async def build_index_iter(
     chunk_urls: list[str] = []
 
     async with httpx.AsyncClient(timeout=30.0) as gh:
-        for i, path in enumerate(paths, start=1):
-            md = await _fetch_markdown(gh, repo, branch, path)
+        # Fetch all files concurrently. GitHub API tolerates this comfortably
+        # for a dozen requests; sequential fetch was a needless ~2s of wall
+        # time on a cold reindex.
+        results = await asyncio.gather(
+            *[_fetch_markdown(gh, repo, branch, p) for p in paths],
+            return_exceptions=True,
+        )
+        for i, (path, md) in enumerate(zip(paths, results), start=1):
+            if isinstance(md, Exception):
+                yield {"phase": "fetch", "done": i, "total": len(paths),
+                       "path": path, "skipped": f"error: {md}"}
+                continue
             if md is None:
                 yield {"phase": "fetch", "done": i, "total": len(paths),
                        "path": path, "skipped": "404"}

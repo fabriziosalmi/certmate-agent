@@ -21,7 +21,7 @@ services:
     # reachable directly from the container's network namespace.
     environment:
       # --- LM Studio (OpenAI-compatible) ---
-      LMSTUDIO_URL: "http://100.66.12.82:1234/v1"
+      LMSTUDIO_URL: "${LMSTUDIO_URL:-http://host.docker.internal:1234/v1}"
       LMSTUDIO_CHAT_MODEL: "google/gemma-4-e2b"
       LMSTUDIO_EMBED_MODEL: "text-embedding-embeddinggemma-300m"
       LMSTUDIO_API_KEY: "lm-studio"
