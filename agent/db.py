@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     args_json    TEXT NOT NULL,
     summary      TEXT NOT NULL,
     kind         TEXT NOT NULL,
-    consumed     INTEGER NOT NULL DEFAULT 0
+    consumed     INTEGER NOT NULL DEFAULT 0,
+    session_id   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -66,19 +67,31 @@ def _conn() -> sqlite3.Connection:
 def init_db() -> None:
     with _conn() as c:
         c.executescript(_SCHEMA)
+        # Idempotent migration: older agent.db files predate the
+        # session_id column on pending_actions. ALTER TABLE ADD COLUMN
+        # is the documented sqlite migration path for additive changes.
+        cols = {row["name"] for row in c.execute("PRAGMA table_info(pending_actions)")}
+        if "session_id" not in cols:
+            c.execute("ALTER TABLE pending_actions ADD COLUMN session_id TEXT")
 
 
 # ---------- pending actions ----------
 
-def save_pending_action(tool_name: str, args: dict[str, Any], summary: str, kind: str) -> str:
+def save_pending_action(
+    tool_name: str,
+    args: dict[str, Any],
+    summary: str,
+    kind: str,
+    session_id: str | None = None,
+) -> str:
     token = secrets.token_urlsafe(24)
     now = int(time.time())
     expires = now + settings.agent_confirm_token_ttl_seconds
     with _conn() as c:
         c.execute(
             "INSERT INTO pending_actions(token, created_at, expires_at, tool_name, "
-            "args_json, summary, kind, consumed) VALUES (?,?,?,?,?,?,?,0)",
-            (token, now, expires, tool_name, json.dumps(args), summary, kind),
+            "args_json, summary, kind, consumed, session_id) VALUES (?,?,?,?,?,?,?,0,?)",
+            (token, now, expires, tool_name, json.dumps(args), summary, kind, session_id),
         )
     return token
 
@@ -98,6 +111,8 @@ def consume_pending_action(token: str) -> dict[str, Any] | None:
             "args": json.loads(row["args_json"]),
             "summary": row["summary"],
             "kind": row["kind"],
+            # session_id may be NULL on rows created before the migration.
+            "session_id": row["session_id"] if "session_id" in row.keys() else None,
         }
 
 

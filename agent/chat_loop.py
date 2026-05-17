@@ -186,7 +186,7 @@ async def run_turn(
     the turn completes.
     """
     # Slash commands short-circuit the LLM entirely.
-    slash_gen = await slash.dispatch(user_message, is_admin=is_admin)
+    slash_gen = await slash.dispatch(user_message, is_admin=is_admin, session_id=session_id)
     if slash_gen is not None:
         audit("turn", "slash", detail=user_message[:200])
         last_assistant_text: str | None = None
@@ -219,7 +219,10 @@ async def run_turn(
     final_assistant_text: str | None = None
 
     tools_schema = openai_tool_schemas()
-    certmate_cm = nullcontext(None) if settings.is_docs_only else CertMateClient()
+    certmate_cm = (
+        nullcontext(None) if settings.is_docs_only
+        else CertMateClient(agent_session_id=session_id)
+    )
 
     async with ChatLLM() as llm, certmate_cm as certmate:
         for iteration in range(settings.agent_max_tool_iterations):
@@ -337,7 +340,7 @@ async def run_turn(
                 else:
                     summary = tool.summarize(args) if tool.summarize else f"Run {name}"
                     token = await asyncio.to_thread(
-                        save_pending_action, name, args, summary, tool.kind.value,
+                        save_pending_action, name, args, summary, tool.kind.value, session_id,
                     )
                     audit("pending_action", "queued", tool_name=name, args=args, detail=token)
                     yield {

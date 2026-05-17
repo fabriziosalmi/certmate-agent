@@ -29,16 +29,27 @@ class CertMateClient:
         base_url: str | None = None,
         token: str | None = None,
         timeout: float | None = None,
+        agent_session_id: str | None = None,
     ) -> None:
         self.base_url = (base_url or settings.certmate_url).rstrip("/")
         self.token = token or settings.certmate_token
         self.timeout = timeout or settings.certmate_timeout_seconds
+        # Optional session_id forwarded to CertMate as a request header so
+        # the audit log can attribute writes to a specific agent session,
+        # not just to the agent's Bearer identity. CertMate ignores
+        # unknown headers, so this is a no-op on older versions.
+        self.agent_session_id = agent_session_id
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> CertMateClient:
         headers = {"Accept": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        # User-Agent identifies the source in CertMate's request logs even
+        # when the agent-session header is unrecognized.
+        headers["User-Agent"] = "certmate-agent/0.1"
+        if self.agent_session_id:
+            headers["X-CertMate-Agent-Session"] = self.agent_session_id
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}/api",
             headers=headers,

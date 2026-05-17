@@ -141,7 +141,9 @@ async def execute_confirmed(
         raise HTTPException(status_code=500, detail="tool no longer registered")
 
     try:
-        async with CertMateClient() as c:
+        async with CertMateClient(
+            agent_session_id=pending.get("session_id"),
+        ) as c:
             result = await tool.executor(c, dict(pending["args"]))
         audit("tool_execute", "ok", tool_name=tool.name, args=pending["args"])
         return {"ok": True, "tool": tool.name, "result": result}

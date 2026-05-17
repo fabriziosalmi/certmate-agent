@@ -14,12 +14,20 @@ LLM chat loop (see chat_loop.py), so the widget renders them identically.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import shlex
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Per-turn session id, set by dispatch() before invoking a handler. Read by
+# _run_read / _propose_write so they can forward it to CertMate audit. Using
+# a ContextVar keeps the handler signatures untouched (12 handlers).
+_current_session: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_current_session", default=None
+)
 
 from .certmate_client import CertMateClient, CertMateError
 from .config import settings
@@ -29,7 +37,7 @@ from .rag.indexer import DEFAULT_INDEX_PATH, DEFAULT_PATHS, DEFAULT_REPO, DEFAUL
 from .rag.indexer import IndexerError, build_index_iter
 from .tools import REGISTRY, ToolKind, get_tool
 
-Handler = Callable[[list[str], bool], AsyncGenerator[dict[str, Any], None]]
+Handler = Callable[..., AsyncGenerator[dict[str, Any], None]]
 
 
 _reindex_lock = asyncio.Lock()
@@ -143,7 +151,7 @@ async def _run_read(
         return
     yield _emit_tool_call(tool_name, args)
     try:
-        async with CertMateClient() as c:
+        async with CertMateClient(agent_session_id=_current_session.get()) as c:
             result = await tool.executor(c, dict(args))
         audit("slash_call", "ok", tool_name=tool_name, args=args)
         yield _emit_tool_result(tool_name, True, result)
@@ -175,7 +183,8 @@ async def _propose_write(
         return
     summary = tool.summarize(args) if tool.summarize else f"Run {tool_name}"
     token = await asyncio.to_thread(
-        save_pending_action, tool_name, args, summary, tool.kind.value
+        save_pending_action, tool_name, args, summary, tool.kind.value,
+        _current_session.get(),
     )
     audit("slash_pending", "queued", tool_name=tool_name, args=args, detail=token)
     yield {
@@ -584,6 +593,7 @@ async def dispatch(
     message: str,
     *,
     is_admin: bool = False,
+    session_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None] | None:
     """If message is a slash command, return the handler's async generator.
     Returns None if not a slash command (caller should fall through to LLM).
@@ -593,6 +603,9 @@ async def dispatch(
         return None
     name, argv = parsed
     cmd = _COMMANDS.get(name)
+    # Stash session_id in a ContextVar so _run_read / _propose_write can
+    # forward it to CertMate without changing 12 handler signatures.
+    _current_session.set(session_id)
     if cmd is None:
         async def _unknown() -> AsyncGenerator[dict[str, Any], None]:
             yield _emit_error(

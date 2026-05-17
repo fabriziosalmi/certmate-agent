@@ -43,13 +43,29 @@ async def health() -> dict:
         out["certmate"] = {"status": "disabled", "reason": "docs_only mode"}
     else:
         try:
-            async with CertMateClient() as cm:
+            async with CertMateClient(agent_session_id="health-probe") as cm:
                 await cm.system_health()
                 out["certmate"] = {"status": "ok"}
         except CertMateError as e:
             out["certmate"] = {"status": "error", "http": e.status, "error": str(e)}
         except Exception as e:
             out["certmate"] = {"status": "error", "error": str(e)}
+
+    # Auth posture advisory (best-effort, no probing): CertMate v2.5.5+
+    # supports scoped operator-role tokens with allowed_domains. The agent
+    # cannot introspect the active token (no Bearer-accessible /whoami at
+    # the time of writing), so we surface a recommendation instead of a
+    # check. Operators should treat this as a deployment-time gate.
+    if not settings.is_docs_only:
+        out["auth_advice"] = {
+            "recommended": "role=operator + allowed_domains (CertMate v2.5.5+)",
+            "rationale": (
+                "Tools the agent invokes are a subset of CertMate's surface "
+                "(no user-management, no full-cert-deletion). A scoped token "
+                "limits blast radius; CertMate's audit log records the "
+                "X-CertMate-Agent-Session header forwarded by this agent."
+            ),
+        }
 
     return out
 
