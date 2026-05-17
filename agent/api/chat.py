@@ -105,6 +105,17 @@ async def chat(
 
     async def stream() -> Any:
         try:
+            # If persistence is on AND the client provided a session_id,
+            # emit the canonical HMAC token up front. The widget caches
+            # it and sends it on /conversations/{id} reads/deletes so a
+            # transcript can't be pulled by anyone who guesses the id.
+            if settings.agent_persist_conversations and req.session_id:
+                from .conversations import issue_session_token
+                yield _sse_format("session", {
+                    "session_id": req.session_id,
+                    "token": issue_session_token(req.session_id),
+                })
+
             async for ev in run_turn(
                 req.message,
                 req.history,

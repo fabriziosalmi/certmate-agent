@@ -18,6 +18,7 @@ Behavior:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -28,12 +29,30 @@ from ..config import settings
 log = logging.getLogger(__name__)
 
 
+def _sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(64 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 async def maybe_bootstrap_index() -> None:
     """If AGENT_INDEX_BOOTSTRAP_URL is set and the local index is missing,
     download it. Idempotent: safe to call on every boot.
+
+    Security: pickle.load() at the receiving end is code-execution by
+    design. We force the bootstrap URL to be HTTPS and, when
+    AGENT_INDEX_BOOTSTRAP_SHA256 is configured, verify the downloaded
+    bytes against that digest before moving the file into place. A
+    mismatched or unverified file is left as <name>.bootstrap.reject for
+    inspection, never loaded.
     """
     url = settings.agent_index_bootstrap_url.strip()
     if not url:
+        return
+    if not url.lower().startswith("https://"):
+        log.error("AGENT_INDEX_BOOTSTRAP_URL must be https:// — refusing to fetch")
         return
     path = Path(settings.agent_index_path)
     if not path.is_absolute():
@@ -43,6 +62,7 @@ async def maybe_bootstrap_index() -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".bootstrap")
+    expected_sha = settings.agent_index_bootstrap_sha256.strip().lower()
     log.info("Bootstrapping RAG index from %s", url)
     try:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as c:
@@ -51,6 +71,24 @@ async def maybe_bootstrap_index() -> None:
                 with tmp.open("wb") as f:
                     async for chunk in r.aiter_bytes(chunk_size=64 * 1024):
                         f.write(chunk)
+        if expected_sha:
+            got = _sha256_of(tmp)
+            if got != expected_sha:
+                rejected = tmp.with_suffix(tmp.suffix + ".reject")
+                tmp.replace(rejected)
+                log.error(
+                    "RAG index bootstrap sha256 MISMATCH: expected=%s got=%s. "
+                    "Refusing to install. File kept for inspection at %s.",
+                    expected_sha, got, rejected,
+                )
+                return
+            log.info("RAG index sha256 verified: %s", got)
+        else:
+            log.warning(
+                "RAG index bootstrap fetched without sha256 pin. Set "
+                "AGENT_INDEX_BOOTSTRAP_SHA256 to verify integrity — "
+                "pickle.load() on this file is RCE-equivalent."
+            )
         tmp.replace(path)
         log.info("RAG index downloaded: %s (%d bytes)", path, path.stat().st_size)
     except Exception as e:

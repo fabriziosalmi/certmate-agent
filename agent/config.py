@@ -49,6 +49,22 @@ class Settings(BaseSettings):
     # Empty disables admin-only commands like /reindex.
     agent_admin_token: str = ""
 
+    # Server-side HMAC secret used to mint/verify per-session tokens so
+    # /conversations/{session_id} GET/DELETE require proof of ownership
+    # instead of being readable by anyone who guesses or sniffs the id.
+    # Auto-generated on first boot if left empty AND persistence is on
+    # (see agent/api/conversations.py session_token()). Operators who
+    # want stable tokens across restarts must set this to a long random
+    # value via env.
+    agent_session_secret: str = ""
+
+    # Optional: pin the expected SHA-256 of the docs index fetched via
+    # AGENT_INDEX_BOOTSTRAP_URL. When set, the file is verified before
+    # being moved into place; mismatch logs an error and skips install
+    # (RCE defense — pickle.load on an attacker-controlled blob is
+    # exec-by-design).
+    agent_index_bootstrap_sha256: str = ""
+
     # When true, the server persists conversations to sqlite keyed by
     # session_id and loads history server-side. When false, the client
     # passes the full history each turn (stateless).

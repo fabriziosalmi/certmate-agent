@@ -49,6 +49,9 @@ class CertMateAgent extends HTMLElement {
     this.sessionKey = this.getAttribute("session-key") ||
       "certmate-agent:" + (new URL(this.endpoint).host);
     this.sessionId = this.persist ? this._loadOrCreateSession() : null;
+    this.sessionToken = this.persist
+      ? localStorage.getItem(this.sessionKey + ":token") || null
+      : null;
     // Server mode is discovered via /health on mount. Defaults to "full"
     // so the autocomplete shows everything until we know otherwise.
     this.serverMode = "full";
@@ -121,9 +124,11 @@ class CertMateAgent extends HTMLElement {
   }
 
   async _restoreHistory() {
+    if (!this.sessionToken) return;  // first-ever load: no token yet
     try {
       const r = await fetch(
         `${this.endpoint}/conversations/${encodeURIComponent(this.sessionId)}`,
+        { headers: { "X-Session-Token": this.sessionToken } },
       );
       if (!r.ok) return;
       const body = await r.json();
@@ -141,15 +146,19 @@ class CertMateAgent extends HTMLElement {
     if (!this.persist) return;
     if (this._abortCtl) this._abortCtl.abort();
     try {
+      const headers = {};
+      if (this.sessionToken) headers["X-Session-Token"] = this.sessionToken;
       await fetch(
         `${this.endpoint}/conversations/${encodeURIComponent(this.sessionId)}`,
-        { method: "DELETE" },
+        { method: "DELETE", headers },
       );
     } catch {}
     try {
       localStorage.removeItem(this.sessionKey);
+      localStorage.removeItem(this.sessionKey + ":token");
     } catch {}
     this.sessionId = this._loadOrCreateSession();
+    this.sessionToken = null;
     this._history = [];
     this._logEl.innerHTML = "";
     this._statusEl = null;
@@ -1250,7 +1259,17 @@ class CertMateAgent extends HTMLElement {
       return;
     }
 
-    if (event === "token") {
+    if (event === "session") {
+      // Server-issued HMAC token bound to our session_id. Cache it so
+      // subsequent /conversations/{id} reads + deletes carry proof of
+      // ownership (X-Session-Token header).
+      if (data.token && data.session_id === this.sessionId) {
+        this.sessionToken = data.token;
+        try {
+          localStorage.setItem(this.sessionKey + ":token", data.token);
+        } catch {}
+      }
+    } else if (event === "token") {
       this._clearStatus();
       this._appendStreamToken(data.text || "");
     } else if (event === "status") {
