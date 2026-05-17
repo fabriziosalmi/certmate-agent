@@ -18,14 +18,18 @@ name: rebuild-docs-index
 # start bootstrap warns if the index's embed_model does not match runtime.
 
 on:
-  schedule:
-    - cron: "0 6 * * 1"           # Monday 06:00 UTC
+  # NOTE: weekly schedule + push auto-trigger are disabled until the
+  # embed-provider secrets are configured (next sprint, alongside Fly).
+  # Re-enable by uncommenting once INDEX_EMBED_URL / INDEX_EMBED_API_KEY /
+  # INDEX_EMBED_MODEL are set as repo secrets.
+  # schedule:
+  #   - cron: "0 6 * * 1"           # Monday 06:00 UTC
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "agent/rag/**"
+  #     - ".github/workflows/rebuild-docs-index.yml"
   workflow_dispatch: {}            # manual trigger from the Actions tab
-  push:
-    branches: [main]
-    paths:
-      - "agent/rag/**"
-      - ".github/workflows/rebuild-docs-index.yml"
 
 permissions:
   contents: write                  # required to create/update releases

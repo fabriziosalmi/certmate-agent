@@ -16,15 +16,18 @@ name: deploy-fly
 # request picks it up.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "agent/**"
-      - "widget/**"
-      - "docker/Dockerfile"
-      - "pyproject.toml"
-      - "fly.toml"
-      - ".github/workflows/deploy-fly.yml"
+  # NOTE: auto-deploy on push is disabled until the public Fly app is
+  # provisioned (next sprint). Re-enable by uncommenting the `push:`
+  # block below once FLY_API_TOKEN is set as a repo secret.
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "agent/**"
+  #     - "widget/**"
+  #     - "docker/Dockerfile"
+  #     - "pyproject.toml"
+  #     - "fly.toml"
+  #     - ".github/workflows/deploy-fly.yml"
   workflow_dispatch: {}
   workflow_run:
     workflows: ["rebuild-docs-index"]
