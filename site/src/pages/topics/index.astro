@@ -1,0 +1,149 @@
+---
+import Base from "../../layouts/Base.astro";
+
+// Planned topics, mirrored on the home page card list. Each entry is
+// either rendered as a real anchor (once the dedicated page lands) or
+// as a stub item with a "Planned" tag and a brief description so the
+// route doesn't 404 the way it does today. Adding a new published topic
+// is: drop a file under src/pages/topics/<slug>.astro and set
+// `published: true` here.
+const topics = [
+  {
+    slug: "what-is-certmate",
+    title: "What CertMate is (and isn't)",
+    blurb: "Overview, scope, comparison with certbot / Caddy / Traefik. When each tool fits.",
+    published: false,
+  },
+  {
+    slug: "dns-01-explained",
+    title: "ACME DNS-01 challenge, end to end",
+    blurb: "Why DNS validation, what a TXT challenge looks like over the wire, where CertMate plugs in.",
+    published: false,
+  },
+  {
+    slug: "wildcard-certificates",
+    title: "Free wildcard certificates with Let's Encrypt",
+    blurb: "The only way to get one — walked through, with the CertMate config that produces it.",
+    published: false,
+  },
+  {
+    slug: "cname-delegation",
+    title: "CNAME delegation for cross-provider validation",
+    blurb: "Validate example.com using a delegated zone on a different DNS provider.",
+    published: false,
+  },
+  {
+    slug: "deploy-hooks",
+    title: "Deploy hooks: from renewed cert to live edge",
+    blurb: "S3, nginx, cluster sync, error semantics. The hook contract CertMate runs against.",
+    published: false,
+  },
+];
+---
+<Base
+  title="Topics — CertMate explainers (DNS-01, wildcards, deploy hooks)"
+  description="Hand-written explainers covering the parts of SSL certificate management that are easy to get wrong: ACME / DNS-01 validation, wildcard issuance, CNAME delegation, deploy hooks. Grounded in the CertMate source."
+>
+  <header class="topics-head">
+    <p class="eyebrow">Curated topics</p>
+    <h1>The things that are easy to get wrong.</h1>
+    <p class="lead">
+      Hand-written explainers — no AI-generated filler. Each piece is
+      grounded in the
+      <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate source</a>
+      and cites the doc it draws from. The first cuts are landing
+      progressively; the full catalogue below tells you what to expect.
+    </p>
+  </header>
+
+  <ul class="topic-list">
+    {topics.map((t) => (
+      <li id={t.slug} class={t.published ? "published" : "planned"}>
+        {t.published ? (
+          <a href={`/topics/${t.slug}/`} class="title">{t.title}</a>
+        ) : (
+          <span class="title">{t.title} <span class="badge">Planned</span></span>
+        )}
+        <p class="blurb">{t.blurb}</p>
+      </li>
+    ))}
+  </ul>
+
+  <section class="cta">
+    <p class="muted">
+      Want one of these next? Open an issue on the
+      <a href="https://github.com/fabriziosalmi/certmate-agent/issues" rel="noopener">agent repo</a>
+      and tell me which one you'd read first.
+    </p>
+  </section>
+</Base>
+
+<style>
+  .topics-head { padding: 8px 0 32px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    margin: 0 0 8px;
+    text-transform: uppercase;
+  }
+  .topics-head h1 {
+    font-size: clamp(1.6rem, 2.2vw + 1rem, 2.2rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+  }
+
+  .topic-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .topic-list li {
+    padding: 18px 22px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    scroll-margin-top: 96px;       /* anchor jumps clear the sticky header */
+  }
+  .topic-list li:target {
+    border-color: var(--fg-muted);
+    background: var(--surface);
+  }
+  .topic-list .title {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--fg);
+    border-bottom-color: var(--border-strong);
+  }
+  .topic-list li.planned .title {
+    color: var(--fg-muted);
+    border-bottom: none;
+  }
+  .topic-list .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--fg-subtle);
+    border: 1px solid var(--border);
+  }
+  .topic-list .blurb {
+    margin: 6px 0 0;
+    color: var(--fg-muted);
+    font-size: 0.95rem;
+  }
+
+  .cta { margin-top: 48px; }
+</style>
