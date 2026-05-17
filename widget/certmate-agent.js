@@ -43,6 +43,9 @@ class CertMateAgent extends HTMLElement {
     // Persistence: when set, server stores history and the widget passes
     // session_id on each request. Auto-generated and kept in localStorage.
     this.persist = this.hasAttribute("persist");
+    // Fill: when set, the card stretches to fill its host element instead
+    // of using a fixed 540px height. Use for full-page test/dev layouts.
+    this.fill = this.hasAttribute("fill");
     this.sessionKey = this.getAttribute("session-key") ||
       "certmate-agent:" + (new URL(this.endpoint).host);
     this.sessionId = this.persist ? this._loadOrCreateSession() : null;
@@ -137,6 +140,7 @@ class CertMateAgent extends HTMLElement {
     this._shadow.innerHTML = `
       <style>
         :host { display:block; font-family: inherit; color: var(--cm-fg); }
+        :host([fill]) { height: 100%; }
         .card {
           background: var(--cm-bg);
           border: 1px solid var(--cm-border);
@@ -147,6 +151,7 @@ class CertMateAgent extends HTMLElement {
           height: 540px;
           box-shadow: 0 1px 2px rgba(0,0,0,.04);
         }
+        :host([fill]) .card { height: 100%; border-radius: 0; border: none; }
         .header {
           padding: .65rem .9rem;
           border-bottom: 1px solid var(--cm-border);
@@ -407,21 +412,43 @@ class CertMateAgent extends HTMLElement {
   }
 
   // Minimal markdown: escape HTML first, then render fences, inline code,
-  // headings, bold, italic, bullet lists, and pipe tables.
+  // headings, bold, italic, bullet lists, links, and pipe tables.
+  //
+  // Placeholders use  (SOH) so they survive markdown rules that
+  // would otherwise strip surrounding spaces (headings, list items),
+  // and so they can't collide with literal text the user wrote.
   _md(src) {
     const esc = (s) => this._escape(s);
+    const PH = "";
     const fences = [];
     const inlines = [];
+    const links = [];
 
-    src = src.replace(/```([\s\S]*?)```/g, (_, code) => {
+    // 1. Fenced code blocks. Tolerate unbalanced trailing ``` from
+    //    truncated RAG excerpts by stripping any leftover triple-backtick
+    //    afterwards.
+    src = src.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
       const c = code.replace(/^\n/, "").replace(/\n$/, "");
       fences.push("<pre><code>" + esc(c) + "</code></pre>");
-      return " FENCE" + (fences.length - 1) + " ";
+      return PH + "F" + (fences.length - 1) + PH;
     });
+    src = src.replace(/```+/g, "");
 
+    // 2. Inline code.
     src = src.replace(/`([^`\n]+)`/g, (_, code) => {
       inlines.push("<code>" + esc(code) + "</code>");
-      return " INL" + (inlines.length - 1) + " ";
+      return PH + "I" + (inlines.length - 1) + PH;
+    });
+
+    // 3. Links [text](url). Done before HTML-escape so the URL stays
+    //    intact and the rendered anchor is also placeholder-protected.
+    src = src.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
+      const safeUrl = /^(https?:|mailto:|\/|\.\.?\/|#)/i.test(url) ? url : "#";
+      links.push(
+        '<a href="' + esc(safeUrl) + '" target="_blank" rel="noopener noreferrer">' +
+          esc(text) + "</a>"
+      );
+      return PH + "L" + (links.length - 1) + PH;
     });
 
     src = esc(src);
@@ -462,8 +489,9 @@ class CertMateAgent extends HTMLElement {
     src = src.replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
 
     src = src
-      .replace(/ INL(\d+) /g, (_, i) => inlines[+i])
-      .replace(/ FENCE(\d+) /g, (_, i) => fences[+i]);
+      .replace(/L(\d+)/g, (_, i) => links[+i])
+      .replace(/I(\d+)/g, (_, i) => inlines[+i])
+      .replace(/F(\d+)/g, (_, i) => fences[+i]);
 
     return src;
   }
