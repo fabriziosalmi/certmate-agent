@@ -82,6 +82,22 @@ class Settings(BaseSettings):
     # Audit log retention (separate from conversations).
     agent_audit_ttl_days: int = 90
 
+    # --- Rate limiting (per remote IP, in-memory token bucket). ---
+    # Set any limit to 0 to disable that endpoint's rate limit.
+    # docs_only deployments should keep these tight (public traffic);
+    # full / single-tenant deployments can raise them or disable.
+    agent_ratelimit_chat_per_min: int = 30
+    agent_ratelimit_execute_per_min: int = 30
+    # Maximum concurrent in-flight /chat streams per remote IP.
+    # SSE streams are long-lived; without this a single client can pin
+    # workers by opening many at once.
+    agent_ratelimit_chat_concurrency: int = 4
+
+    # --- Tool output sanitization (defense vs OWASP LLM01 prompt injection). ---
+    # Hard cap on the size of a tool_result fed back into the LLM as
+    # role=tool content. Tool outputs > this many chars are truncated.
+    agent_tool_output_max_chars: int = 4000
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.agent_cors_origins.split(",") if o.strip()]
