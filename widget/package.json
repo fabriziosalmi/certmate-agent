@@ -1,7 +1,7 @@
 {
   "name": "certmate-agent-widget",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Vanilla web component for CertMate Agent. No build step — devDeps only for tests.",
   "type": "module",
   "scripts": {

@@ -1,7 +1,7 @@
 {
   "name": "certmate-agent-site",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
   "description": "Public docs + landing for agent.certmate.org. Built with Astro, hosted on GitHub Pages.",
   "scripts": {
