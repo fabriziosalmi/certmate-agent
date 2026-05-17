@@ -1,0 +1,246 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="Deploy hooks: from renewed certificate to live edge"
+  description="A renewed certificate sitting on disk is half the job. CertMate's deploy hook system runs a shell command per domain when a cert is created, renewed, or revoked — and the env contract is explicit enough to script against. Here's the schema, the security model, and the recipes that actually work."
+  slug="deploy-hooks"
+  readTime="8 min"
+  source={{ file: "docs/deploy-hooks.md", section: "What a hook is + Recipes" }}
+>
+
+<p>
+  Certificate renewal isn't done when the bytes hit disk. The
+  interesting part is everything <em>after</em> renewal: reloading
+  nginx, syncing the cert to an HAProxy peer, pushing the bundle to
+  an S3 bucket your edge consumers read, paging on revocation.
+  CertMate's deploy hooks are the contract between "cert renewed"
+  and that downstream work.
+</p>
+
+<h2>The schema</h2>
+
+<p>
+  A hook is a JSON object with five fields:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>string</td><td>yes</td><td>Stable identifier. The UI auto-generates a UUID. Used by <code>/api/deploy/test/&lt;id&gt;</code>.</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Human label shown in the UI and audit log.</td></tr>
+    <tr><td><code>command</code></td><td>string</td><td>yes</td><td>A single shell command run via <code>sh -c</code>. Max 1024 chars.</td></tr>
+    <tr><td><code>enabled</code></td><td>boolean</td><td>no</td><td>Default <code>true</code>. Disabled hooks skip automatic firing but can still be tested manually.</td></tr>
+    <tr><td><code>timeout</code></td><td>integer</td><td>no</td><td>Seconds. Default 30, capped at the system max (300).</td></tr>
+    <tr><td><code>on_events</code></td><td>string[]</td><td>no</td><td>Subset of <code>["created", "renewed", "revoked"]</code>. Absent = all three.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Hooks live under two keys in the <code>deploy_hooks</code> config:
+</p>
+
+<ul>
+  <li>
+    <strong><code>global_hooks</code></strong> — fire for every
+    domain. Good for "reload nginx after any cert changes."
+  </li>
+  <li>
+    <strong><code>domain_hooks</code></strong> — keyed by exact
+    domain name. Good for "push the LB cert for{" "}
+    <code>api.example.com</code> to S3 after that specific cert
+    renews."
+  </li>
+</ul>
+
+<h2>The env contract</h2>
+
+<p>
+  Every invocation receives these environment variables in the hook's
+  process. Script against these names; CertMate guarantees them.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Example</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CERTMATE_DOMAIN</code></td><td><code>api.example.com</code></td></tr>
+    <tr><td><code>CERTMATE_CERT_PATH</code></td><td><code>/app/certificates/api.example.com/cert.pem</code></td></tr>
+    <tr><td><code>CERTMATE_KEY_PATH</code></td><td><code>/app/certificates/api.example.com/privkey.pem</code></td></tr>
+    <tr><td><code>CERTMATE_FULLCHAIN_PATH</code></td><td><code>/app/certificates/api.example.com/fullchain.pem</code></td></tr>
+    <tr><td><code>CERTMATE_EVENT</code></td><td><code>created</code> / <code>renewed</code> / <code>revoked</code> / <code>manual</code></td></tr>
+    <tr><td><code>CERTMATE_DRY_RUN</code></td><td>Set to <code>1</code> during dry-run only; absent otherwise.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The <code>CERTMATE_DRY_RUN</code> flag is the one nobody thinks
+  about until they need it: when CertMate is running a renewal in
+  staging mode, it still fires hooks so the wiring stays exercised,
+  but it also sets that flag so your hook can short-circuit. See the
+  "Skip hooks during dry-run" recipe below.
+</p>
+
+<h2>Recipes that actually work</h2>
+
+<h3>Reload nginx</h3>
+
+<p>The minimal global hook:</p>
+
+<pre><code>/usr/sbin/nginx -s reload</code></pre>
+
+<p>
+  No env vars referenced — nginx already knows where the certs live
+  via its config. The hook timeout default (30s) is generous; if you
+  see <code>timeout after 30s</code> in the audit log, something is
+  blocking the reload, not the hook.
+</p>
+
+<h3>Sync to a remote nginx peer</h3>
+
+<pre><code>{`scp -i /etc/certmate/deploy_key \\
+  "$CERTMATE_FULLCHAIN_PATH" "$CERTMATE_KEY_PATH" \\
+  deploy@nginx-2.internal:/etc/nginx/certs/$CERTMATE_DOMAIN/ \\
+  && ssh -i /etc/certmate/deploy_key deploy@nginx-2.internal \\
+       'sudo systemctl reload nginx'`}</code></pre>
+
+<p>
+  Put this in a <code>domain_hooks</code> entry for the specific
+  cert. The SSH key is restricted to a single command on the remote
+  side via <code>authorized_keys</code> + <code>command=</code> — see
+  the security model below.
+</p>
+
+<h3>Push to an S3 bucket</h3>
+
+<pre><code>{`aws s3 cp "$CERTMATE_FULLCHAIN_PATH" \\
+  "s3://my-certs-bucket/$CERTMATE_DOMAIN/fullchain.pem" \\
+  --sse aws:kms --acl private`}</code></pre>
+
+<p>
+  Useful when the consumer of the cert is a Lambda, a Fastly
+  origin-shielded edge config, or anything else that reads
+  certificates from S3.
+</p>
+
+<h3>Page on revocation</h3>
+
+<pre><code>{`if [ "$CERTMATE_EVENT" = "revoked" ]; then
+  curl -X POST "$PAGERDUTY_INTEGRATION_URL" \\
+    -H "Content-Type: application/json" \\
+    -d "{ \\"event_action\\": \\"trigger\\",
+          \\"payload\\": {
+            \\"summary\\": \\"Cert revoked: $CERTMATE_DOMAIN\\",
+            \\"severity\\": \\"critical\\",
+            \\"source\\": \\"certmate\\"
+          } }"
+fi`}</code></pre>
+
+<p>
+  Same hook, scoped via <code>on_events: ["revoked"]</code> so the
+  event check is belt-and-suspenders. PagerDuty integration URL goes
+  in the CertMate process env.
+</p>
+
+<h3>Skip during dry-run</h3>
+
+<pre><code>{`if [ -n "$CERTMATE_DRY_RUN" ]; then
+  echo "dry-run, skipping deploy"
+  exit 0
+fi
+# real work here`}</code></pre>
+
+<h2>Security model</h2>
+
+<p>
+  Deploy hooks run as the CertMate process user, with the full
+  process environment, and execute under <code>sh -c</code>. That's
+  enough power that CertMate enforces some guardrails on the
+  configured command string:
+</p>
+
+<ul>
+  <li>
+    <strong>Blocked shell patterns.</strong> Commands containing
+    obviously-malicious shapes (eval, rm -rf /, fork bombs) are
+    rejected at write time. The list is non-exhaustive on purpose
+    — it stops accidents, not a determined attacker who already
+    has admin on CertMate.
+  </li>
+  <li>
+    <strong>Blocked file references.</strong> Reading sensitive
+    paths (<code>/etc/shadow</code>, the CertMate sqlite database)
+    via simple <code>cat</code>-style commands is rejected.
+  </li>
+  <li>
+    <strong>1024-char command limit.</strong> Forces complex logic
+    into an external script. That's the right call: a 2 KB shell
+    one-liner is a maintenance trap.
+  </li>
+  <li>
+    <strong>Timeout capped at 300 s.</strong> A hook that runs for
+    five minutes is doing too much. Background the work or move it
+    to a queue and have the hook just enqueue.
+  </li>
+</ul>
+
+<p>
+  The real boundary is process-level. If you need the hook to run as
+  a different user, restart a privileged service, or change ownership
+  on files, use <code>sudo</code> with a narrowly-scoped sudoers
+  entry rather than running CertMate as root.
+</p>
+
+<h2>Audit, debug, dry-run</h2>
+
+<p>
+  Every hook firing writes an audit row with the user / token that
+  triggered it (or the renewal scheduler, for automatic firings),
+  the exit code, stdout / stderr truncated to a reasonable bound,
+  and the wall-clock duration. The UI also has a per-hook
+  <em>Test</em> button that fires the hook with the most recent
+  certificate's paths so you can verify the wiring without forcing
+  an actual renewal.
+</p>
+
+<p>
+  Common failures, transcribed from the audit log:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Message</th><th>Cause</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>timeout after 30s</code></td><td>Hook ran longer than its <code>timeout</code>. Bump it (max 300s) or background the work.</td></tr>
+    <tr><td><code>Deploy hooks disabled</code></td><td><code>deploy_hooks.enabled</code> is <code>false</code>. Master switch.</td></tr>
+    <tr><td><code>No hooks configured for &lt;domain&gt;</code></td><td>No global hooks AND no entry under <code>domain_hooks[&lt;domain&gt;]</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>Configuring via the API</h2>
+
+<p>
+  The hook config is a single JSON document under{" "}
+  <code>deploy_hooks</code>. To replace it:
+</p>
+
+<pre><code>{`# Replace config (full document write — pass the whole deploy_hooks dict)
+curl -X POST https://certmate.local/api/deploy/config \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d @hooks.json`}</code></pre>
+
+<p>
+  The POST replaces the whole <code>deploy_hooks</code> block; merge
+  client-side if you want to preserve existing entries. The
+  <a href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">conversational agent</a>
+  surfaces this as the <code>cert_deploy</code> tool and the
+  <code>/deploy</code> slash command — but the API is the contract,
+  and it's stable.
+</p>
+
+</Topic>

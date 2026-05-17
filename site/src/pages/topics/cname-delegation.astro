@@ -1,0 +1,189 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="CNAME delegation for cross-provider ACME validation"
+  description="Your domain's DNS sits on a provider CertMate doesn't speak, or you don't want to give your cert manager API access to the production zone. CNAME delegation moves just the ACME validation records to a separate zone — full TLS, narrow blast radius."
+  slug="cname-delegation"
+  readTime="7 min"
+  source={{ file: "docs/dns-providers.md", section: "Multi-Master DNS & Domain Alias" }}
+>
+
+<p>
+  CertMate ships first-class adapters for 23 DNS providers, but
+  reality has more providers than that, and even when there's an
+  adapter you may not want to hand it API credentials. CNAME
+  delegation solves both cases. The pattern is to publish ONE record
+  on the production DNS — a CNAME at{" "}
+  <code>_acme-challenge.example.com</code> — pointing at a
+  <em>different</em> zone you fully control, and let the second zone
+  hold the TXT records ACME actually validates.
+</p>
+
+<h2>The mechanic, step by step</h2>
+
+<p>
+  Let's Encrypt's validator follows CNAMEs during DNS-01. When it
+  queries <code>_acme-challenge.example.com</code> and the response
+  is a CNAME, it follows the chain and reads the TXT at the end of
+  the chain. This is in the ACME spec and has been stable for years.
+</p>
+
+<p>
+  Concretely, you set up two things:
+</p>
+
+<ol>
+  <li>
+    <strong>A validation zone on a provider CertMate speaks.</strong>{" "}
+    Pick something like <code>validation.example.org</code> on
+    Cloudflare. CertMate gets API credentials to that zone.
+  </li>
+  <li>
+    <strong>A static CNAME on the production zone.</strong> At
+    <code>_acme-challenge.example.com</code>, point at
+    <code>_acme-challenge.validation.example.org</code>. This record is
+    written once and never changes; CertMate doesn't need API access
+    to the production zone to maintain it.
+  </li>
+</ol>
+
+<p>
+  From that point on, every ACME validation for{" "}
+  <code>example.com</code> writes its TXT record on the validation
+  zone, the validator follows the CNAME, and Let's Encrypt is happy.
+  Your production DNS provider never sees CertMate's traffic and
+  doesn't need to give CertMate an API key.
+</p>
+
+<h2>The CertMate fields</h2>
+
+<p>
+  CertMate exposes the delegation as a per-certificate field called
+  <code>domain_alias</code>. Concretely:
+</p>
+
+<pre><code>{`curl -X POST https://certmate.local/api/certificates/create \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "domain": "example.com",
+    "dns_provider": "cloudflare",
+    "domain_alias": "validation.example.org"
+  }'`}</code></pre>
+
+<p>
+  With <code>domain_alias</code> set, CertMate writes the TXT record
+  at <code>_acme-challenge.validation.example.org</code> via the
+  Cloudflare account it has credentials for. The CA queries{" "}
+  <code>_acme-challenge.example.com</code>, follows your static
+  CNAME, reads the value on Cloudflare, and the certificate issues.
+</p>
+
+<p>
+  An optional <code>alias_dns_provider</code> field lets you keep
+  your "main" certificates on one provider and the delegation on a
+  different one — useful when the provider doing the delegation is
+  shared across many production zones.
+</p>
+
+<h2>When this pattern is the right answer</h2>
+
+<h3>The provider you use has no CertMate adapter</h3>
+
+<p>
+  The supported list covers the major commercial providers plus
+  a handful of self-hosted options, but the long tail is long. deSEC,
+  Gcore, smaller country-specific providers — none of these have
+  first-class adapters today. With CNAME delegation, you don't need
+  one: keep your authoritative DNS where it is, set up a five-dollar
+  Cloudflare zone for validation, point a CNAME, done.
+</p>
+
+<h3>You don't want CertMate touching production DNS</h3>
+
+<p>
+  Even when the provider IS supported, handing your cert manager a
+  token that can edit your production zone is more privilege than the
+  task requires. CertMate's job is to write
+  <code>_acme-challenge</code> TXT records; nothing else. A
+  compromised CertMate with a full-zone token can rewrite your MX,
+  point your apex at an attacker's IP, vandalize SPF/DKIM/DMARC. The
+  same CertMate with credentials to <em>only</em> a validation zone
+  can do exactly one thing: write TXT records on a zone where TXT
+  records are the only thing that exist.
+</p>
+
+<h3>Your DNS is split across providers</h3>
+
+<p>
+  "Multi-master DNS" — Cloudflare primary plus Route53 secondary, for
+  example — is increasingly common for resilience. ACME's validator
+  queries via the public DNS hierarchy and uses whichever
+  authoritative answers it gets. If your two providers' TXT records
+  drift even slightly, the validation fails non-deterministically.
+  Centralizing validation on a single delegated zone removes the
+  multi-master from the validation path entirely.
+</p>
+
+<h2>Wildcards through delegation</h2>
+
+<p>
+  Wildcards work exactly the same way. The wildcard
+  <code>*.example.com</code> validates via{" "}
+  <code>_acme-challenge.example.com</code>, which you've delegated, so
+  there's no extra setup. The same request shape works:
+</p>
+
+<pre><code>{`curl -X POST https://certmate.local/api/certificates/create \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "domain": "*.example.com",
+    "san_domains": ["example.com"],
+    "dns_provider": "cloudflare",
+    "domain_alias": "validation.example.org"
+  }'`}</code></pre>
+
+<h2>Operational caveats</h2>
+
+<ul>
+  <li>
+    <strong>The CNAME has to be in place before you ask for a cert.</strong>{" "}
+    CertMate doesn't write it for you on the production zone — it
+    can't, that's the whole point. Set it up once, then never
+    touch it.
+  </li>
+  <li>
+    <strong>CAA records still apply to the original name.</strong>{" "}
+    Let's Encrypt walks the CAA tree for the original identifier
+    (<code>example.com</code>), not the delegation target. Keep your
+    CAA configuration correct on the production zone.
+  </li>
+  <li>
+    <strong>One delegation zone can serve many production zones.</strong>{" "}
+    There's nothing stopping you from putting{" "}
+    <code>_acme-challenge.a.com</code> → <code>...validation...</code>{" "}
+    and <code>_acme-challenge.b.com</code> → <code>...validation...</code>{" "}
+    at the same time. CertMate handles them with one set of validation
+    credentials.
+  </li>
+  <li>
+    <strong>For ACME-DNS specifically</strong>, the
+    <code>domain_alias</code> value must match the configured
+    ACME-DNS <code>subdomain</code>/fulldomain exactly. CertMate
+    updates that ACME-DNS record directly and skips cleanup
+    (ACME-DNS keeps only the latest value by design).
+  </li>
+</ul>
+
+<p>
+  Once the delegation is in place, your renewal flow is identical to
+  the non-delegated case: <a href="/topics/dns-01-explained/">the
+  DNS-01 challenge runs as usual</a>, the cert lands, and your
+  <a href="/topics/deploy-hooks/">deploy hooks fire</a>. The only
+  difference is the zone the TXT actually appears on — and that's
+  exactly the difference you wanted.
+</p>
+
+</Topic>

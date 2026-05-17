@@ -1,0 +1,188 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="ACME DNS-01 challenge, end to end — and where CertMate plugs in"
+  description="DNS-01 is how Let's Encrypt verifies you control a domain when port 80 isn't an option, and the only path to wildcard certificates. Here's what happens over the wire, what can go wrong, and the part CertMate automates."
+  slug="dns-01-explained"
+  readTime="7 min"
+  source={{ file: "docs/dns-providers.md", section: "Challenge mechanics" }}
+>
+
+<p>
+  When a certificate authority issues you a certificate for
+  <code>example.com</code>, it has to first convince itself you actually
+  control that domain. The ACME protocol defines three ways to prove it:
+  HTTP-01 (serve a file at a specific URL), TLS-ALPN-01 (negotiate a
+  specific TLS extension), and DNS-01 (place a TXT record at a specific
+  name). DNS-01 is the only one of the three that works for hosts that
+  aren't on the public internet, and the only one that can issue
+  wildcards.
+</p>
+
+<h2>The wire-level dance</h2>
+
+<p>
+  Here's exactly what happens when you ask Let's Encrypt for a cert via
+  DNS-01. Numbers refer to the steps below.
+</p>
+
+<ol>
+  <li>
+    <strong>Order.</strong> The ACME client POSTs <code>newOrder</code>
+    to the CA's directory, listing the identifiers it wants
+    (<code>example.com</code>, <code>*.example.com</code>). The CA
+    responds with a list of authorization URLs, one per identifier.
+  </li>
+  <li>
+    <strong>Challenge selection.</strong> The client GETs each
+    authorization, picks DNS-01 from the offered challenges, and
+    receives a token plus a key authorization (the token concatenated
+    with a hash of the client's account key).
+  </li>
+  <li>
+    <strong>Provisioning.</strong> The client SHA-256s the key
+    authorization, base64url-encodes it, and writes a TXT record at
+    <code>_acme-challenge.example.com</code> with that value as the
+    payload. For wildcards, the same name —
+    <code>_acme-challenge.example.com</code> — is also the location
+    for <code>*.example.com</code>, which has a subtle consequence:
+    a wildcard order produces two challenges at the same DNS name,
+    and you must publish both values (most providers handle this via
+    multi-value TXT records).
+  </li>
+  <li>
+    <strong>Notify.</strong> The client POSTs to the challenge URL to
+    tell the CA "ready, check me."
+  </li>
+  <li>
+    <strong>Validation.</strong> The CA's authoritative validators
+    (multiple, geographically distributed; Let's Encrypt published
+    the count as five in 2020 and the architecture as
+    "multi-perspective") resolve <code>_acme-challenge.example.com</code>
+    via the public DNS hierarchy. If at least the configured quorum
+    sees the expected value, the challenge passes.
+  </li>
+  <li>
+    <strong>Finalize.</strong> The client POSTs the CSR, the CA mints
+    the certificate, the order moves to <em>valid</em>, and the client
+    GETs the cert chain.
+  </li>
+  <li>
+    <strong>Cleanup.</strong> The client deletes the TXT record.
+  </li>
+</ol>
+
+<h2>Where it goes wrong</h2>
+
+<p>
+  In practice, almost every DNS-01 failure is one of these four:
+</p>
+
+<h3>DNS propagation</h3>
+
+<p>
+  Your DNS provider's API confirms the TXT record was written. The
+  authoritative nameservers haven't picked it up yet. The validator
+  queries, sees stale data, marks the challenge failed. The fix is to
+  poll for propagation before notifying the CA — CertMate does this
+  via certbot's <code>--dns-X-propagation-seconds</code> argument,
+  tuned per provider.
+</p>
+
+<h3>CAA records</h3>
+
+<p>
+  Your zone has a <code>CAA</code> record permitting only
+  <code>digicert.com</code> (because three years ago you bought an EV
+  cert and never cleaned up). Let's Encrypt walks the tree, sees the
+  restriction, refuses to issue. The fix is to delete or amend the CAA
+  before you start. The symptom is a clear error message from the CA
+  during finalize; CertMate surfaces it in the audit log.
+</p>
+
+<h3>Provider account scope</h3>
+
+<p>
+  Your Cloudflare API token has <em>Zone:DNS:Edit</em> for
+  <code>example.com</code> but not for <code>internal.example.com</code>,
+  which lives in a separate zone. The TXT write returns 403. The fix
+  is to widen the token scope, or to issue against a per-zone token
+  (CertMate's multi-account support is exactly this).
+</p>
+
+<h3>CNAME loops or split-horizon DNS</h3>
+
+<p>
+  You have <code>example.com</code> resolving differently inside your
+  VPC than on the public internet. The validator hits the public side
+  and sees something that doesn't reach your authoritative server. The
+  general fix is to <a href="/topics/cname-delegation/">delegate the
+  ACME validation zone via CNAME</a> to a name you fully control on
+  the public side.
+</p>
+
+<h2>The bit CertMate does for you</h2>
+
+<p>
+  Concretely, CertMate's DNS-01 pipeline does the following so you
+  don't have to:
+</p>
+
+<ul>
+  <li>
+    Selects the DNS provider plugin from the certificate's
+    <code>dns_provider</code> field, loads the credentials from the
+    configured account, and invokes certbot with the right
+    <code>--dns-X-credentials</code> arguments.
+  </li>
+  <li>
+    Writes the TXT record, polls for propagation with provider-tuned
+    timeouts, validates with the CA, and reads back the certificate.
+  </li>
+  <li>
+    Stores the result in
+    <code>/app/certificates/&lt;domain&gt;/&#123;cert.pem, privkey.pem,
+    fullchain.pem&#125;</code> with restricted permissions.
+  </li>
+  <li>
+    Fires the configured <a href="/topics/deploy-hooks/">deploy hooks</a>
+    so whatever consumes the cert gets the new bytes.
+  </li>
+  <li>
+    Logs the operation in the audit log with the user / token identity
+    and the wall-clock timing of each phase. If anything fails, the
+    failure mode is in the log with the certbot error verbatim.
+  </li>
+</ul>
+
+<h2>When NOT to use DNS-01</h2>
+
+<p>
+  DNS-01 is the right answer for almost everything, but there are two
+  cases where HTTP-01 still wins:
+</p>
+
+<ul>
+  <li>
+    <strong>You don't have DNS API access.</strong> A managed DNS that
+    only exposes a web UI is fine for HTTP-01 (the cert manager just
+    serves a file). CertMate doesn't offer this path because the
+    central premise is automation.
+  </li>
+  <li>
+    <strong>Your DNS provider has slow propagation under load and
+    your renewal cadence is tight.</strong> A handful of small
+    providers have publicly documented 60+ second propagation under
+    contention. HTTP-01 is instant on those.
+  </li>
+</ul>
+
+<p>
+  For the wildcard case, there is no alternative. If you want
+  <code>*.example.com</code>, you're doing DNS-01. Continue to
+  <a href="/topics/wildcard-certificates/">the wildcard topic</a> for
+  the practical walkthrough.
+</p>
+
+</Topic>

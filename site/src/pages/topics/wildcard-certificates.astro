@@ -1,0 +1,171 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="Free wildcard certificates with Let's Encrypt — what works, what doesn't"
+  description="Wildcard certificates from Let's Encrypt are free and automated, but they have rules nobody warns you about. Here's the model Let's Encrypt actually uses, the cases the wildcard covers, the cases it doesn't, and the CertMate configuration that produces one."
+  slug="wildcard-certificates"
+  readTime="6 min"
+  source={{ file: "docs/dns-providers.md", section: "Wildcard Certificates with Domain Alias" }}
+>
+
+<p>
+  A wildcard certificate is a single certificate whose SAN list
+  includes <code>*.example.com</code>. Browsers and standard TLS
+  clients accept it for any name that matches the wildcard. Let's
+  Encrypt issues them at no cost. The catch isn't price — it's the
+  set of rules around what the wildcard actually matches and how you
+  have to prove control to get one.
+</p>
+
+<h2>What the wildcard covers (and what it doesn't)</h2>
+
+<p>
+  This is RFC 6125 territory and it trips people up regularly.
+  <code>*.example.com</code> matches a single label at the position of
+  the asterisk. Concretely:
+</p>
+
+<ul>
+  <li><code>api.example.com</code> — <strong>covered.</strong></li>
+  <li><code>admin.example.com</code> — <strong>covered.</strong></li>
+  <li><code>example.com</code> (the apex) — <strong>NOT covered.</strong>
+    The wildcard is one label; the apex is zero labels.</li>
+  <li><code>v2.api.example.com</code> — <strong>NOT covered.</strong>
+    Two labels under <code>example.com</code>, the wildcard only
+    matches one.</li>
+</ul>
+
+<p>
+  In practice this means a typical SAN list is{" "}
+  <code>example.com, *.example.com</code> — the apex plus the
+  one-deep wildcard. If you also need <code>v2.api.example.com</code>,
+  you need a second wildcard (<code>*.api.example.com</code>) or you
+  add the FQDN as another SAN.
+</p>
+
+<h2>The DNS-01 requirement</h2>
+
+<p>
+  Let's Encrypt has had wildcards since 2018 and from day one the
+  policy has been: wildcards are issued only via the DNS-01 challenge.
+  Practically every other CA that issues free wildcards (ZeroSSL,
+  Google Public CA, Buypass) inherits the same constraint.
+</p>
+
+<p>
+  The reason is mechanical, not arbitrary. HTTP-01 proves control over
+  a specific hostname by serving a file at <code>/.well-known/...</code>;
+  for a wildcard you'd have to serve files at every conceivable
+  subdomain, which doesn't generalize. DNS-01 proves control over the
+  zone by writing a TXT record at <code>_acme-challenge.example.com</code>,
+  and zone control IS the right scope for "any subdomain of
+  <code>example.com</code>."
+</p>
+
+<p>
+  So: every wildcard renewal is a DNS-01 dance. If you want a wildcard
+  you're committing to API access to your DNS. There is no path
+  around this.
+</p>
+
+<h2>The CertMate request</h2>
+
+<p>
+  Once the DNS provider is set up, asking CertMate for a wildcard is
+  one POST. Concretely, with Cloudflare wired in already as the
+  default account:
+</p>
+
+<pre><code>curl -X POST https://certmate.local/api/certificates/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"{"}
+    "domain": "*.example.com",
+    "dns_provider": "cloudflare"
+  {"}"}'</code></pre>
+
+<p>
+  CertMate runs certbot under the hood with{" "}
+  <code>--dns-cloudflare --domain '*.example.com'</code>, polls for
+  propagation, retrieves the certificate, and stores it under
+  <code>/app/certificates/_.example.com/</code> (the leading
+  asterisk gets normalized to an underscore on disk for path safety).
+</p>
+
+<p>
+  To include the apex on the same certificate, list both names:
+</p>
+
+<pre><code>curl -X POST https://certmate.local/api/certificates/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"{"}
+    "domain": "example.com",
+    "san_domains": ["*.example.com"],
+    "dns_provider": "cloudflare"
+  {"}"}'</code></pre>
+
+<p>
+  The resulting certificate's SAN list is exactly{" "}
+  <code>example.com, *.example.com</code> — apex + one-deep wildcard.
+</p>
+
+<h2>The renewal contract</h2>
+
+<p>
+  Let's Encrypt certs are valid for 90 days. CertMate's auto-renew
+  fires when a certificate is within 30 days of expiry by default; you
+  can override the window per certificate. Each renewal repeats the
+  DNS-01 dance, so the DNS API credentials need to keep working
+  forever — which is the real cost of going wildcard. Rotate the
+  credentials and CertMate's renewal silently breaks until you update
+  the account.
+</p>
+
+<p>
+  The fix is operational: monitor the audit log for renewal failures
+  (CertMate writes one audit row per attempt), or wire a
+  <a href="/topics/deploy-hooks/">deploy hook on the <code>revoked</code>
+  event</a> to page someone.
+</p>
+
+<h2>Security considerations</h2>
+
+<p>
+  A wildcard certificate is a higher-value secret than a single-name
+  one. If the private key leaks, the attacker can impersonate
+  <em>any</em> subdomain — including ones you'll create in the future.
+  Two implications:
+</p>
+
+<ul>
+  <li>
+    <strong>Don't share the wildcard.</strong> If three services need
+    TLS at three different subdomains, give them three SAN
+    certificates rather than one wildcard that they all keep on disk.
+    CertMate makes this trivial because issuance is cheap.
+  </li>
+  <li>
+    <strong>Reduce file permissions aggressively.</strong> CertMate
+    stores cert + key with mode 600 owned by the certmate user, but
+    deploy hooks that push the cert elsewhere need to preserve that
+    discipline. The hook contract passes file paths via env vars
+    (<code>CERTMATE_KEY_PATH</code>, etc.) — never embed the bytes
+    inline in a shell command.
+  </li>
+</ul>
+
+<h2>Cross-provider validation</h2>
+
+<p>
+  What if your domain's DNS is hosted on a provider CertMate doesn't
+  have a plugin for? You can still get the wildcard, by delegating
+  just the <code>_acme-challenge</code> sub-zone to a provider it
+  does speak. That's the <a href="/topics/cname-delegation/">CNAME
+  delegation</a> pattern — and it's also the safest way to scope
+  DNS API credentials when you don't want CertMate's token to be able
+  to edit your main zone.
+</p>
+
+</Topic>

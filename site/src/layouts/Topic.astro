@@ -1,0 +1,224 @@
+---
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Slug of the topic (used for canonical + prev/next lookup). */
+  slug: string;
+  /** Read-time hint, e.g. "6 min". */
+  readTime: string;
+  /** CertMate doc this piece is grounded in. */
+  source: {
+    file: string;          // e.g. "docs/dns-providers.md"
+    section?: string;
+  };
+}
+
+const { title, description, slug, readTime, source } = Astro.props;
+
+// Manual catalogue order — also drives prev/next. Keep in sync with
+// site/src/pages/topics/index.astro `topics` array.
+const order = [
+  "what-is-certmate",
+  "dns-01-explained",
+  "wildcard-certificates",
+  "cname-delegation",
+  "deploy-hooks",
+];
+const i = order.indexOf(slug);
+const prev = i > 0 ? order[i - 1] : null;
+const next = i >= 0 && i < order.length - 1 ? order[i + 1] : null;
+
+const sourceUrl = `https://github.com/fabriziosalmi/certmate/blob/main/${source.file}`;
+const canonical = `/topics/${slug}/`;
+---
+<Base title={title} description={description} canonical={canonical}>
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="/">CertMate</a>
+    <span aria-hidden="true">›</span>
+    <a href="/topics/">Topics</a>
+    <span aria-hidden="true">›</span>
+    <span aria-current="page">{title.split(" — ")[0]}</span>
+  </nav>
+
+  <article class="topic prose">
+    <header class="topic-head">
+      <p class="meta">
+        <span class="read">{readTime} read</span>
+        <span aria-hidden="true">·</span>
+        <span class="src">
+          Grounded in
+          <a href={sourceUrl} rel="noopener" class="src-link"><code>{source.file}</code></a>
+          {source.section && (<><span aria-hidden="true">›</span> <span class="src-section">{source.section}</span></>)}
+        </span>
+      </p>
+      <h1>{title.split(" — ")[0]}</h1>
+      <p class="lead">{description}</p>
+    </header>
+
+    <div class="body">
+      <slot />
+    </div>
+
+    <footer class="topic-foot">
+      <div class="cta-box">
+        <strong>Run it yourself.</strong>
+        <p>
+          The behavior described here is in the
+          <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate repo</a>.
+          Self-host alongside your existing stack — Docker compose, single binary, or Python install.
+        </p>
+        <div class="cta-row">
+          <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">Get CertMate ↗</a>
+          <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">Get the Agent ↗</a>
+        </div>
+      </div>
+
+      <nav class="pager" aria-label="More topics">
+        {prev && (
+          <a class="pager-prev" href={`/topics/${prev}/`}>
+            <span class="dir">← Previous</span>
+            <span class="slug">{prev.replace(/-/g, " ")}</span>
+          </a>
+        )}
+        {next && (
+          <a class="pager-next" href={`/topics/${next}/`}>
+            <span class="dir">Next →</span>
+            <span class="slug">{next.replace(/-/g, " ")}</span>
+          </a>
+        )}
+      </nav>
+    </footer>
+  </article>
+</Base>
+
+<style>
+  .breadcrumb {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-subtle);
+    margin: -8px 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .breadcrumb a {
+    color: var(--fg-muted);
+    border-bottom: none;
+  }
+  .breadcrumb a:hover { color: var(--fg); }
+
+  .topic { display: block; max-width: none; }
+
+  .topic-head {
+    padding: 8px 0 24px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .topic-head .meta {
+    margin: 0 0 14px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+    color: var(--fg-muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .topic-head .meta code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .topic-head .src-link {
+    color: var(--fg-muted);
+    border-bottom: none;
+  }
+  .topic-head .src-link:hover { color: var(--fg); }
+  .topic-head .src-section {
+    color: var(--fg-subtle);
+  }
+  .topic-head h1 {
+    font-size: clamp(1.85rem, 2.8vw + 1rem, 2.4rem);
+    margin: 0 0 14px;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .body { max-width: var(--measure); }
+  .body h2 {
+    margin-top: 2em;
+    padding-top: 0.2em;
+    font-size: 1.45rem;
+  }
+  .body h3 {
+    margin-top: 1.4em;
+    font-size: 1.1rem;
+  }
+  .body blockquote {
+    margin: 18px 0;
+    padding: 12px 18px;
+    border-left: 3px solid var(--fg-muted);
+    background: var(--panel);
+    border-radius: 0 8px 8px 0;
+    color: var(--fg-muted);
+    font-size: 0.97em;
+  }
+  .body blockquote p { margin: 4px 0; }
+
+  .topic-foot { margin-top: 56px; }
+  .cta-box {
+    padding: 24px 26px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+  }
+  .cta-box strong { font-size: 1.05rem; }
+  .cta-box p { margin: 6px 0 16px; color: var(--fg-muted); font-size: 0.95rem; }
+  .cta-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .pager {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .pager > a {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    text-decoration: none;
+    border-bottom: none;
+    color: var(--fg);
+  }
+  .pager > a:hover {
+    border-color: var(--border-strong);
+    background: var(--surface);
+  }
+  .pager .dir {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+  }
+  .pager .slug {
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .pager-next { grid-column: 2; text-align: right; }
+  .pager:has(.pager-next:only-child) .pager-next { grid-column: 2 / span 1; }
+  @media (max-width: 540px) {
+    .pager { grid-template-columns: 1fr; }
+    .pager-next { grid-column: 1; text-align: left; }
+  }
+</style>

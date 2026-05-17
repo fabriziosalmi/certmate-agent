@@ -1,0 +1,157 @@
+---
+import Topic from "../../layouts/Topic.astro";
+---
+<Topic
+  title="What CertMate is (and isn't) — vs certbot, Caddy, Traefik"
+  description="CertMate is a self-hosted certificate manager: a web UI and REST API around certbot, with first-class DNS-01 across 23 DNS providers, role-scoped API keys, and a deploy-hook system that pushes renewals to your edge. Here's where it fits."
+  slug="what-is-certmate"
+  readTime="5 min"
+  source={{ file: "README.md", section: "Why CertMate? / Key Features" }}
+>
+
+<p>
+  Most operators already have a way to get TLS certificates. They have a
+  cron, a <code>certbot renew</code>, and a memory of the time the cron
+  silently broke and a cert expired on a Friday afternoon. The question
+  isn't <em>"how do I get a cert"</em> — it's <em>"how do I run cert
+  issuance so I don't have to think about it again"</em>.
+</p>
+
+<p>
+  CertMate answers that question. It's a service, not a script: a Flask
+  app with a web UI, a REST API, persistent state, role-based access
+  control, an audit log, and DNS-01 plugins for 23 DNS providers. You
+  point it at a domain, pick a provider, and it issues the certificate
+  and keeps it renewed. When a renewal lands it fires a configurable
+  shell command per domain so nginx / HAProxy / your edge cluster gets
+  the new bundle without manual intervention.
+</p>
+
+<h2>The four things that make CertMate distinct</h2>
+
+<p>
+  Reading the <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">repo</a>
+  in order, four design choices stand out:
+</p>
+
+<ol>
+  <li>
+    <strong>DNS-01 first.</strong> Every certificate flows through the
+    DNS-01 challenge. HTTP-01 isn't even an option in the UI. That
+    sounds restrictive but it's deliberate: DNS-01 is the only path to
+    wildcard certificates, it works for hosts that aren't on the public
+    internet, and it doesn't need port 80 open anywhere. The cost is
+    that you need API credentials for your DNS provider; CertMate
+    ships 23 first-class adapters so most operators already have one.
+  </li>
+  <li>
+    <strong>Multi-account, multi-provider DNS.</strong> You can have
+    Cloudflare-production, Cloudflare-staging, Route53-archive, and a
+    PowerDNS for an internal subzone — all configured at once, each
+    certificate pinned to the account that should manage its
+    <code>_acme-challenge</code> records.
+  </li>
+  <li>
+    <strong>Scoped API keys with per-domain allowlists.</strong> A
+    token can be scoped to <code>role=operator</code> and
+    <code>allowed_domains=[*.api.example.com, ops.example.com]</code>.
+    Out-of-scope requests return <code>403 DOMAIN_OUT_OF_SCOPE</code> and
+    are written to the audit log. Useful when the certificate manager
+    has to live next to a CI runner or a small ops team.
+  </li>
+  <li>
+    <strong>Deploy hooks as a first-class contract.</strong> When a
+    cert is created, renewed, or revoked, CertMate runs configured shell
+    commands with the new file paths exposed as environment variables.
+    No symlink-shuffling, no "where did the new cert go" — see the
+    <a href="/topics/deploy-hooks/">deploy hooks topic</a> for the
+    exact contract.
+  </li>
+</ol>
+
+<h2>Where it fits vs the alternatives</h2>
+
+<h3>vs certbot</h3>
+
+<p>
+  Certbot is the tool CertMate runs internally. The difference is the
+  envelope: certbot is a CLI you invoke; CertMate is a service that
+  invokes certbot, stores the result, talks HTTP to your other
+  systems, and survives a restart. If your fleet is one VPS with two
+  domains, certbot + a cron is the right answer. If your fleet has 30
+  domains, three DNS providers, and you'd like someone to be able to
+  request a certificate without ssh-ing into anything, CertMate is the
+  right answer.
+</p>
+
+<h3>vs Caddy</h3>
+
+<p>
+  Caddy is a reverse proxy that does automatic HTTPS as a feature of
+  serving traffic. It's brilliant when your TLS lives at the same
+  process that terminates HTTPS. It's not the answer when your TLS
+  needs to live somewhere else — a sibling cluster, an S3 bucket
+  consumed by mTLS clients, a hardware load balancer, an edge service
+  you don't run. CertMate is the cert factory; what you feed the cert
+  to is your decision.
+</p>
+
+<h3>vs Traefik</h3>
+
+<p>
+  Same shape as Caddy. Traefik's ACME integration is excellent when
+  Traefik is the only consumer of the certificate. The moment a second
+  consumer exists — even a backup nginx that just needs the same cert
+  — you end up either duplicating issuance or syncing certs around.
+  CertMate solves the "one cert, many consumers" problem by being
+  the single source and pushing via deploy hooks.
+</p>
+
+<h3>vs an internal PKI (Vault, Smallstep, cert-manager)</h3>
+
+<p>
+  Different problem. Internal PKIs issue certificates from your own
+  CA for service-to-service mTLS. CertMate issues certificates from a
+  public CA (Let's Encrypt, ZeroSSL, Google Public CA — see
+  <code>docs/ca-providers.md</code>) for the public hostnames your
+  users hit. Run both if you need both; CertMate's
+  <em>client-certs</em> subsystem also issues internal mTLS certs from
+  a local CA, but that's a complementary path, not a replacement for
+  Vault.
+</p>
+
+<h2>When CertMate is overkill</h2>
+
+<p>
+  Be honest: if your domain count is one, your host count is one, and
+  your renewal contract is "let certbot handle it on the host that
+  serves the traffic," CertMate is more service than you need. The
+  inflection points where it pays for itself are:
+</p>
+
+<ul>
+  <li>You need wildcard certificates (the answer is always DNS-01).</li>
+  <li>Your cert lives on a host that doesn't speak port 80 to the public internet.</li>
+  <li>You have more than one consumer for the same cert.</li>
+  <li>You have a compliance requirement to audit who renewed what.</li>
+  <li>You want a non-technical operator to be able to request a cert without shell access.</li>
+</ul>
+
+<h2>Reading the source</h2>
+
+<p>
+  The pieces worth knowing about, in order:
+</p>
+
+<ul>
+  <li><code>modules/core/</code> — the issuance, renewal, and deploy logic.</li>
+  <li><code>modules/web/</code> — Flask routes, RBAC, audit.</li>
+  <li><code>docs/</code> — operator-facing docs, hand-written.</li>
+  <li>The conversational sidecar lives in a sibling repo:
+    <a href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">certmate-agent</a>.
+    Not required for CertMate itself; useful if you want to talk to
+    CertMate in natural language instead of clicking around.
+  </li>
+</ul>
+
+</Topic>
