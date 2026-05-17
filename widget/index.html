@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title>CertMate Agent</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="certmate-logo.png" />
+  <link rel="apple-touch-icon" href="certmate-logo.png" />
   <link rel="stylesheet" href="certmate-agent.css" />
   <style>
     :root {
@@ -44,15 +47,11 @@
       font-size: 13px;
     }
     .topbar .logo {
-      width: 24px; height: 24px;
+      width: 26px; height: 26px;
       border-radius: 7px;
-      background: var(--page-fg);
-      color: var(--page-bg);
-      display: inline-flex;
-      align-items: center; justify-content: center;
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: -0.02em;
+      object-fit: contain;
+      display: inline-block;
+      flex: 0 0 auto;
     }
     .topbar h1 {
       font-size: 14px;
@@ -101,7 +100,7 @@
 </head>
 <body>
   <header class="topbar">
-    <span class="logo" aria-hidden="true">C</span>
+    <img class="logo" src="certmate-logo.png" alt="" aria-hidden="true" />
     <h1>CertMate Agent</h1>
     <span class="sep" aria-hidden="true"></span>
     <span class="meta">

@@ -500,6 +500,14 @@ class CertMateAgent extends HTMLElement {
           padding: 12px 16px 16px;
           border-top: 1px solid var(--cm-border);
           background: var(--cm-bg);
+          align-items: stretch;
+        }
+        /* The submit button matches the input's 40px height so they
+           line up visually in the composer. Generic .tool / confirm
+           buttons stay at 32px. */
+        .form button {
+          height: 40px;
+          padding: 0 18px;
         }
         .input-wrap {
           flex: 1;
