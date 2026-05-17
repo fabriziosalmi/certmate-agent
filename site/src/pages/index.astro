@@ -19,6 +19,9 @@ import Base from "../layouts/Base.astro";
       <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
         Get CertMate ↗
       </a>
+      <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
+        Get the Agent ↗
+      </a>
       <a class="btn ghost" href="/topics/">
         Browse explainers
       </a>
@@ -118,11 +121,17 @@ import Base from "../layouts/Base.astro";
       <h2>Run it on your infrastructure.</h2>
       <p class="muted">
         Docker compose, single binary, or Python install. Sensible
-        defaults, no telemetry, no SaaS dependency.
+        defaults, no telemetry, no SaaS dependency. The conversational
+        sidecar is a separate, optional add-on.
       </p>
-      <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
-        Install CertMate ↗
-      </a>
+      <div class="cta-row centered">
+        <a class="btn" href="https://github.com/fabriziosalmi/certmate" rel="noopener">
+          Install CertMate ↗
+        </a>
+        <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
+          Install the Agent ↗
+        </a>
+      </div>
     </div>
   </section>
 </Base>
@@ -226,4 +235,5 @@ import Base from "../layouts/Base.astro";
     letter-spacing: -0.02em;
   }
   .cta-box p { margin: 0 0 22px; }
+  .cta-row.centered { justify-content: center; }
 </style>

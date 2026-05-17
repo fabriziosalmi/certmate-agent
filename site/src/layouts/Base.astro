@@ -69,6 +69,9 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
           <a href="https://github.com/fabriziosalmi/certmate" rel="noopener" class="cta">
             Get CertMate ↗
           </a>
+          <a href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener" class="cta cta-secondary">
+            Get Agent ↗
+          </a>
         </nav>
       </div>
     </header>
@@ -161,6 +164,16 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
       nav a.cta:hover {
         background: color-mix(in oklab, var(--accent) 88%, transparent);
         color: var(--accent-fg);
+      }
+      nav a.cta-secondary {
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--border-strong);
+      }
+      nav a.cta-secondary:hover {
+        background: var(--surface);
+        color: var(--fg);
+        border-color: var(--fg-muted);
       }
       nav svg { vertical-align: -3px; }
       .footer-inner {
