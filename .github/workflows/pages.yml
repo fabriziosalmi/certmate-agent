@@ -34,7 +34,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Astro 6 requires Node >=22.12. Keep this in sync with package.json.
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: site/package-lock.json
 
