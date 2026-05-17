@@ -117,9 +117,21 @@ def consume_pending_action(token: str) -> dict[str, Any] | None:
 
 
 def prune_expired_pending() -> int:
+    """Drop pending_actions rows that are either:
+      - past their `expires_at` (token can never be used anymore), or
+      - already `consumed=1` and at least 1h past `created_at` (kept
+        around briefly for debugging double-submit, then GC'd).
+
+    The audit table records the actual execution, so deleting these
+    rows is not a loss of forensic data.
+    """
     now = int(time.time())
     with _conn() as c:
-        cur = c.execute("DELETE FROM pending_actions WHERE expires_at < ?", (now,))
+        cur = c.execute(
+            "DELETE FROM pending_actions "
+            "WHERE expires_at < ? OR (consumed = 1 AND created_at < ?)",
+            (now, now - 3600),
+        )
         return cur.rowcount
 
 

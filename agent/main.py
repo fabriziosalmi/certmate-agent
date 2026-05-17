@@ -14,6 +14,11 @@ from . import __version__
 from .api import chat as chat_api
 from .api import conversations as conversations_api
 from .api import health as health_api
+from .api.request_context import (
+    RequestIdMiddleware,
+    install_exception_handler,
+    install_logging,
+)
 from .api.security_headers import SecurityHeadersMiddleware
 from .config import settings
 from .db import init_db
@@ -24,6 +29,7 @@ logging.basicConfig(
     level=getattr(logging, settings.agent_log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+install_logging()  # add request-id field to every log record
 log = logging.getLogger("certmate-agent")
 
 
@@ -60,6 +66,15 @@ app.add_middleware(
 # Added AFTER CORS so the CORS middleware sees raw requests; the headers
 # stamp on the outgoing response either way.
 app.add_middleware(SecurityHeadersMiddleware)
+# Correlation ID — last in the add order, first in the request path.
+# That way request_id is bound before security headers / CORS run, so
+# their log lines also carry it.
+app.add_middleware(RequestIdMiddleware)
+
+# Global exception handler — turns any uncaught exception into a generic
+# 500 referencing the request id, with the full traceback going to the
+# server log only.
+install_exception_handler(app)
 
 app.include_router(health_api.router)
 app.include_router(chat_api.router)

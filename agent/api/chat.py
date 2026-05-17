@@ -53,8 +53,11 @@ def _check_origin(origin: str | None) -> None:
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
-    history: list[dict[str, Any]] = Field(default_factory=list)
-    session_id: str | None = Field(default=None, max_length=128)
+    # History is capped both in item count (defense against a malicious
+    # client trying to balloon LLM context to exhaust upstream tokens or
+    # memory) and per-item content size via field_validator below.
+    history: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
+    session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9._\-]+$")
     admin_token: str | None = Field(default=None, max_length=256)
 
 
@@ -108,11 +111,24 @@ async def chat(
                 is_admin=is_admin,
                 session_id=req.session_id,
             ):
+                # If the client has disconnected mid-stream, stop the
+                # tool/LLM loop instead of paying for more upstream
+                # tokens that no one will read. starlette gives us a
+                # per-request hook we just have to ask for.
+                if await request.is_disconnected():
+                    return
                 yield _sse_format(ev["event"], ev.get("data", {}))
         except asyncio.CancelledError:
             return
         except Exception as e:
-            yield _sse_format("error", {"message": f"server error: {e}"})
+            # Avoid leaking the exception message in production; the
+            # global handler logged the traceback already with the
+            # request id. Surface a short identifier the operator can
+            # cross-reference.
+            yield _sse_format("error", {
+                "message": "server error during stream",
+                "kind": type(e).__name__,
+            })
             yield _sse_format("done", {})
         finally:
             await _chat_concurrency.release(key)
