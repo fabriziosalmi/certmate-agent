@@ -1,8 +1,11 @@
 # certmate-agent
 
-Lightweight assistant for [CertMate](https://github.com/fabriziosalmi/certmate).
+![CertMate Agent](./screenshot.png)
 
-Embedded local LLM (LM Studio over Tailscale by default) + a 1:1 mapping of CertMate's REST API as
+Conversational assistant for [CertMate](https://www.certmate.org)
+([source](https://github.com/fabriziosalmi/certmate)).
+
+Embedded local LLM (LM Studio by default) + a 1:1 mapping of CertMate's REST API as
 LLM-callable tools. Read tools auto-execute; write tools queue a `pending_action` with a
 human-readable summary and require an explicit confirmation from the UI.
 
