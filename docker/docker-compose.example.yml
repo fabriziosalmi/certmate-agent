@@ -2,10 +2,14 @@
 #
 # Adjust:
 #   - LMSTUDIO_URL / CERTMATE_URL to your hosts
-#   - CERTMATE_TOKEN to a Bearer token CertMate accepts
+#   - CERTMATE_TOKEN to a Bearer token CertMate accepts (prefer a scoped
+#     operator-role token over an admin one)
 #   - AGENT_ADMIN_TOKEN to enable /reindex (leave empty to disable)
 #
-# Build once, run, then build the docs index with:
+# Full per-variable docs live in `.env.example` at the repo root —
+# the comments below are abbreviated for compose's narrower context.
+#
+# Build once, run, then build the docs index inside the container with:
 #   docker compose exec certmate-agent python -m agent.rag.indexer
 
 services:
@@ -16,46 +20,75 @@ services:
     image: certmate-agent:latest
     container_name: certmate-agent
     restart: unless-stopped
-    # On macOS use host.docker.internal for the Tailscale LM Studio host
-    # if it's reachable from the host; on Linux Tailscale is generally
-    # reachable directly from the container's network namespace.
+    # On macOS use host.docker.internal for the LM Studio host running
+    # on the host machine; on Linux a Tailscale IP or LAN address of
+    # the workstation is reachable directly from the container.
     environment:
-      # --- LM Studio (OpenAI-compatible) ---
+      # ----- LM Studio (OpenAI-compatible) -----
+      # Base URL of the chat+embeddings endpoint, override via host .env.
       LMSTUDIO_URL: "${LMSTUDIO_URL:-http://host.docker.internal:1234/v1}"
+      # Chat model id served by LMSTUDIO_URL.
       LMSTUDIO_CHAT_MODEL: "google/gemma-4-e2b"
+      # Embedding model id (must match what built the docs index).
       LMSTUDIO_EMBED_MODEL: "text-embedding-embeddinggemma-300m"
+      # Bearer token for the LLM endpoint; "lm-studio" is the convention
+      # for a local LM Studio install with auth not enforced.
       LMSTUDIO_API_KEY: "lm-studio"
+      # HTTP timeout for chat completions.
       LMSTUDIO_TIMEOUT_SECONDS: "120"
 
-      # --- CertMate ---
+      # ----- CertMate -----
+      # Base URL CertMate's REST API listens on inside the docker network.
       CERTMATE_URL: "http://certmate:8000"
+      # Bearer token CertMate accepts. Fail-fast if not set.
       CERTMATE_TOKEN: "${CERTMATE_TOKEN:?set CERTMATE_TOKEN in .env}"
+      # HTTP timeout for CertMate calls.
       CERTMATE_TIMEOUT_SECONDS: "30"
 
-      # --- Agent ---
+      # ----- Agent service -----
+      # Bind on 0.0.0.0 inside the container — exposed via the ports
+      # map below, which binds to 127.0.0.1 on the host.
       AGENT_HOST: "0.0.0.0"
+      # Listening port inside the container.
       AGENT_PORT: "8765"
+      # SQLite file path on the mounted volume.
       AGENT_DB_PATH: "/data/agent.db"
+      # RAG index pickle path on the mounted volume.
       AGENT_INDEX_PATH: "/data/docs_index/index.pkl"
+      # CORS allowlist; drives CSP frame-ancestors too.
       AGENT_CORS_ORIGINS: "${AGENT_CORS_ORIGINS:-http://localhost:8000}"
+      # Standard Python log level.
       AGENT_LOG_LEVEL: "INFO"
+      # Max output tokens per LLM call.
       AGENT_MAX_TOKENS: "2048"
+      # LLM sampling temperature.
       AGENT_TEMPERATURE: "0.2"
 
-      # --- Admin (gate /reindex) ---
+      # ----- Admin -----
+      # Secret to enable /reindex and other admin slash commands.
+      # Empty disables admin commands entirely.
       AGENT_ADMIN_TOKEN: "${AGENT_ADMIN_TOKEN:-}"
 
-      # --- Conversation persistence ---
+      # ----- Conversation persistence -----
+      # Store conversation history in sqlite keyed by session_id.
       AGENT_PERSIST_CONVERSATIONS: "true"
+      # Retention for persisted messages.
       AGENT_CONVERSATION_TTL_DAYS: "30"
+      # HMAC secret for /conversations/{id} ownership tokens. Set a long
+      # random value; empty => process-local random (won't survive a
+      # restart and won't validate across workers).
+      AGENT_SESSION_SECRET: "${AGENT_SESSION_SECRET:-}"
 
-      # --- Background cleanup (TTL pruning) ---
+      # ----- Background cleanup (TTL pruning) -----
+      # Cleanup pass interval; 0 disables the scheduler.
       AGENT_CLEANUP_INTERVAL_SECONDS: "3600"
 
-      # --- Optional fallback LLM (OpenRouter). Leave empty to disable. ---
+      # ----- Optional fallback LLM (OpenRouter). Empty disables. -----
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}"
+      # Trip the primary breaker after N consecutive failures.
       LLM_PRIMARY_FAILURE_THRESHOLD: "3"
+      # Keep the breaker tripped for N seconds before retrying.
       LLM_PRIMARY_COOLDOWN_SECONDS: "60"
     ports:
       - "127.0.0.1:8765:8765"
