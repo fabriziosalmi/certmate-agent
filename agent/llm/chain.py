@@ -122,27 +122,47 @@ class ChatLLM:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Stream chat completion deltas. Same fallback semantics as chat().
+        """Stream chat completion deltas with safe primary→fallback handoff.
 
-        Note on tool-calling + streaming: providers send tool_call arguments
-        in delta fragments that the caller must concatenate. The caller is
-        responsible for assembly; this method just forwards chunks.
+        Critical invariant: once we have yielded the first chunk to the
+        caller, we are committed to the provider that produced it. We
+        CANNOT silently retry on the fallback — the caller has already
+        seen partial output (tool_call arg fragments, content tokens),
+        and replaying the request on a different provider would either
+        duplicate emitted chunks or yield two competing assistant
+        messages. So the fallback is only attempted when the primary
+        fails *before* emitting anything.
+
+        Tool-calling + streaming: providers send tool_call arguments in
+        delta fragments that the caller must concatenate. We just
+        forward chunks.
         """
         kwargs = {
             "tools": tools, "tool_choice": tool_choice,
             "temperature": temperature, "max_tokens": max_tokens,
         }
+        primary_emitted = False
 
         if not self.primary_tripped:
             try:
                 async for chunk in self.primary.chat_stream(messages, **kwargs):
+                    primary_emitted = True
                     yield chunk
                 self._record_success()
                 self.last_provider = "lmstudio"
                 return
             except _RETRIABLE as e:
-                log.warning("primary chat_stream failed: %s", e)
                 self._record_failure()
+                if primary_emitted:
+                    # We've already shown the caller partial output from
+                    # the primary; falling back now would duplicate.
+                    # Propagate as ChainError so the caller can surface
+                    # a single coherent error.
+                    log.warning("primary chat_stream failed AFTER emit: %s", e)
+                    raise ChainError(
+                        f"primary stream cut off mid-response: {e}"
+                    ) from e
+                log.warning("primary chat_stream failed BEFORE emit: %s — trying fallback", e)
                 if self.fallback is None:
                     raise
 
