@@ -1,0 +1,26 @@
+[
+  {
+    "q_it": "Come configuro Let's Encrypt con DNS-01?",
+    "a_it": "Per configurare Let's Encrypt tramite **DNS-01**, devi modificare il file di configurazione aggiungendo il token API del tuo provider DNS. Ad esempio, per Cloudflare, usa `CLOUDFLARE_API_TOKEN`.",
+    "q_en": "How do I configure Let's Encrypt with DNS-01?",
+    "a_en": "To configure Let's Encrypt via **DNS-01**, modify the config file by adding your DNS provider's API token. For example, for Cloudflare, use `CLOUDFLARE_API_TOKEN`.",
+    "source": "docs/dns-01.md",
+    "title": "DNS-01 Challenge"
+  },
+  {
+    "q_it": "Quali provider DNS sono supportati nativamente da CertMate?",
+    "a_it": "CertMate supporta nativamente **Cloudflare, Route53, DigitalOcean, e Hetzner**. È possibile aggiungere plugin custom per altri provider.",
+    "q_en": "Which DNS providers are natively supported by CertMate?",
+    "a_en": "CertMate natively supports **Cloudflare, Route53, DigitalOcean, and Hetzner**. You can add custom plugins for other providers.",
+    "source": "docs/providers.md",
+    "title": "Supported Providers"
+  },
+  {
+    "q_it": "Come rinnovo un certificato manualmente?",
+    "a_it": "Usa il comando slack `/renew <dominio>`. L'agente chiederà conferma e forzerà il rinnovo scavalcando il check dei 30 giorni.",
+    "q_en": "How do I renew a certificate manually?",
+    "a_en": "Use the slack command `/renew <domain>`. The agent will ask for confirmation and force the renewal, bypassing the 30-day check.",
+    "source": "docs/commands.md",
+    "title": "Slash Commands"
+  }
+]
