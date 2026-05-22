@@ -9,6 +9,16 @@ Embedded local LLM (LM Studio by default) + a 1:1 mapping of CertMate's REST API
 LLM-callable tools. Read tools auto-execute; write tools queue a `pending_action` with a
 human-readable summary and require an explicit confirmation from the UI.
 
+## Ecosystem
+
+Part of the [CertMate](https://github.com/fabriziosalmi/certmate) ecosystem:
+
+- **[CertMate](https://github.com/fabriziosalmi/certmate)** — open-source SSL certificate management (API + UI).
+- **[certmate-tools](https://github.com/fabriziosalmi/certmate-tools)** — free, privacy-first, client-side TLS / certificate / ACME diagnostics.
+- **[nis2-public](https://github.com/fabriziosalmi/nis2-public)** — NIS2 continuous posture management & remediation.
+
+**Enterprise / high-scale** — multi-tenant, mTLS, white-label and NIS2-aligned deployments are available through *CertMate-ng* (source-available, BSL 1.1, EU-built). Contact **fabrizio.salmi@gmail.com**.
+
 ## Operating modes
 
 Set `AGENT_MODE` to choose between:
