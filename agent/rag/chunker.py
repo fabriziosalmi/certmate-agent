@@ -75,6 +75,9 @@ def chunk_markdown(
     min_chars: int = 200,
 ) -> list[Chunk]:
     """Heading-aware chunker. Returns chunks in document order."""
+    if not text or not text.strip():
+        return []
+    
     sections = _split_sections(text)
     chunks: list[Chunk] = []
     stack: list[str] = [""] * 7  # index by heading level
