@@ -1,7 +1,6 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
 
 from agent.rag.chunker import chunk_markdown
 from agent.rag.indexer import DEFAULT_PATHS
