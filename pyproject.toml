@@ -1,6 +1,6 @@
 [project]
 name = "certmate-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight assistant agent for CertMate. Deterministic intent routing + local LLM fallback (LMStudio)."
 requires-python = ">=3.11"
 dependencies = [

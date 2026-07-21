@@ -8,36 +8,33 @@ from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from ..certmate_client import CertMateClient, CertMateError
 from ..chat_loop import run_turn
 from ..config import settings
-from ..db import audit, consume_pending_action
 from ..rate_limit import (
     ConcurrencyLimiter,
     RateLimiter,
     client_key,
     enforce,
 )
-from ..tools import get_tool
 
 router = APIRouter()
 
 # Rate limiters live at module scope: shared across requests within this
 # worker, but per-worker (see rate_limit.py module docstring).
 _chat_rl = RateLimiter(settings.agent_ratelimit_chat_per_min, 60.0)
-_execute_rl = RateLimiter(settings.agent_ratelimit_execute_per_min, 60.0)
 _chat_concurrency = ConcurrencyLimiter(settings.agent_ratelimit_chat_concurrency)
 
 
 def _check_origin(origin: str | None) -> None:
     """Reject browser POSTs from origins not on the configured allowlist.
 
-    Defense against click-jacking and embedding the widget on a hostile
-    third-party page that could trigger writes via /tools/execute.
-    Requests without an Origin header (curl, server-to-server) bypass
-    this check — they're protected by Bearer auth on the CertMate side.
+    Keeps the widget from being embedded on a hostile third-party page.
+    Requests without an Origin header (curl, server-to-server) bypass this
+    check: the agent no longer holds any credential and can only read its own
+    documentation index, so the residual risk is cost and abuse, which the
+    rate limiter bounds.
     """
     if origin is None:
         return
@@ -51,19 +48,43 @@ def _check_origin(origin: str | None) -> None:
         )
 
 
+# What a client may put in `history`. `system` is deliberately absent (#17):
+# chat_loop splices history in immediately after the real system prompt, so a
+# caller passing role="system" could append instructions of its own — deleting
+# the tool-output guard, or making the public deployment emit arbitrary
+# statements attributed to CertMate.
+_ALLOWED_HISTORY_ROLES = {"user", "assistant"}
+_MAX_HISTORY_CONTENT_CHARS = 4000
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
-    # History is capped both in item count (defense against a malicious
-    # client trying to balloon LLM context to exhaust upstream tokens or
-    # memory) and per-item content size via field_validator below.
+    # History is capped in item count (a malicious client must not be able to
+    # balloon the LLM context) and, in the validator below, in role and
+    # per-item content size. The original comment claimed a validator that was
+    # never written (#17).
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
     session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9._\-]+$")
     admin_token: str | None = Field(default=None, max_length=256)
 
-
-class ExecuteRequest(BaseModel):
-    token: str = Field(..., min_length=8)
-    admin_token: str | None = Field(default=None, max_length=256)
+    @field_validator("history")
+    @classmethod
+    def _clean_history(cls, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Items are already dicts: the field type makes pydantic reject
+        # anything else with a 422 before this runs.
+        cleaned: list[dict[str, Any]] = []
+        for item in items:
+            role = item.get("role")
+            if role not in _ALLOWED_HISTORY_ROLES:
+                continue
+            content = item.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            cleaned.append({
+                "role": role,
+                "content": content[:_MAX_HISTORY_CONTENT_CHARS],
+            })
+        return cleaned
 
 
 def _is_admin(header_val: str | None, body_val: str | None) -> bool:
@@ -149,35 +170,3 @@ async def chat(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.post("/tools/execute")
-async def execute_confirmed(
-    request: Request,
-    req: ExecuteRequest,
-    origin: str | None = Header(default=None),
-) -> dict[str, Any]:
-    _check_origin(origin)
-    await enforce(_execute_rl, request, "tools/execute")
-    pending = await asyncio.to_thread(consume_pending_action, req.token)
-    if pending is None:
-        raise HTTPException(status_code=404, detail="token unknown, consumed, or expired")
-
-    tool = get_tool(pending["tool_name"])
-    if tool is None:
-        raise HTTPException(status_code=500, detail="tool no longer registered")
-
-    try:
-        async with CertMateClient(
-            agent_session_id=pending.get("session_id"),
-        ) as c:
-            result = await tool.executor(c, dict(pending["args"]))
-        audit("tool_execute", "ok", tool_name=tool.name, args=pending["args"])
-        return {"ok": True, "tool": tool.name, "result": result}
-    except CertMateError as e:
-        audit("tool_execute", "error", tool_name=tool.name, args=pending["args"],
-              detail=f"http_{e.status}: {e}")
-        raise HTTPException(status_code=502, detail=str(e)) from e
-    except Exception as e:
-        audit("tool_execute", "error", tool_name=tool.name, args=pending["args"], detail=str(e))
-        raise HTTPException(status_code=500, detail=str(e)) from e

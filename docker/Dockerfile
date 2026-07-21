@@ -19,9 +19,13 @@ RUN pip install --no-cache-dir .
 
 # Persistent volumes (mount from compose):
 #   /data       — sqlite db + RAG index
+# AGENT_HOST is intentionally NOT set to 0.0.0.0 here (#13): baking it into
+# the image meant `docker run -p 8765:8765` published the agent to the LAN,
+# while the compose file carefully bound it to 127.0.0.1. Set AGENT_HOST at
+# run time if you really want it on every interface, and put something in
+# front of it when you do.
 ENV AGENT_DB_PATH=/data/agent.db \
-    AGENT_INDEX_PATH=/data/docs_index/index.pkl \
-    AGENT_HOST=0.0.0.0 \
+    AGENT_INDEX_PATH=/data/docs_index/index.json.gz \
     AGENT_PORT=8765
 
 RUN mkdir -p /data/docs_index && \

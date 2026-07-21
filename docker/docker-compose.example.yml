@@ -1,9 +1,11 @@
-# Example deployment alongside CertMate.
+# Example deployment.
+#
+# The agent answers from the CertMate documentation. It holds no CertMate
+# credential and talks to no CertMate instance, so there is nothing to point
+# it at beyond the LLM endpoint.
 #
 # Adjust:
-#   - LMSTUDIO_URL / CERTMATE_URL to your hosts
-#   - CERTMATE_TOKEN to a Bearer token CertMate accepts (prefer a scoped
-#     operator-role token over an admin one)
+#   - LMSTUDIO_URL to your host
 #   - AGENT_ADMIN_TOKEN to enable /reindex (leave empty to disable)
 #
 # Full per-variable docs live in `.env.example` at the repo root —
@@ -37,14 +39,6 @@ services:
       # HTTP timeout for chat completions.
       LMSTUDIO_TIMEOUT_SECONDS: "120"
 
-      # ----- CertMate -----
-      # Base URL CertMate's REST API listens on inside the docker network.
-      CERTMATE_URL: "http://certmate:8000"
-      # Bearer token CertMate accepts. Fail-fast if not set.
-      CERTMATE_TOKEN: "${CERTMATE_TOKEN:?set CERTMATE_TOKEN in .env}"
-      # HTTP timeout for CertMate calls.
-      CERTMATE_TIMEOUT_SECONDS: "30"
-
       # ----- Agent service -----
       # Bind on 0.0.0.0 inside the container — exposed via the ports
       # map below, which binds to 127.0.0.1 on the host.
@@ -53,8 +47,8 @@ services:
       AGENT_PORT: "8765"
       # SQLite file path on the mounted volume.
       AGENT_DB_PATH: "/data/agent.db"
-      # RAG index pickle path on the mounted volume.
-      AGENT_INDEX_PATH: "/data/docs_index/index.pkl"
+      # RAG index path on the mounted volume (gzipped JSON).
+      AGENT_INDEX_PATH: "/data/docs_index/index.json.gz"
       # CORS allowlist; drives CSP frame-ancestors too.
       AGENT_CORS_ORIGINS: "${AGENT_CORS_ORIGINS:-http://localhost:8000}"
       # Standard Python log level.

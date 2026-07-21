@@ -21,7 +21,6 @@ primary_region = "fra"           # Frankfurt — change to your closest region
 
 [env]
   # --- Mode ---
-  AGENT_MODE = "docs_only"
   AGENT_HOST = "0.0.0.0"
   AGENT_PORT = "8080"
 
@@ -37,8 +36,8 @@ primary_region = "fra"           # Frankfurt — change to your closest region
   # --- Index bootstrap ---
   # Fetched on cold start by maybe_bootstrap_index() (agent/rag/bootstrap.py).
   # Update the repo path if you fork.
-  AGENT_INDEX_BOOTSTRAP_URL = "https://github.com/fabriziosalmi/certmate-agent/releases/download/index-latest/index.pkl"
-  AGENT_INDEX_PATH = "/data/docs_index/index.pkl"
+  AGENT_INDEX_BOOTSTRAP_URL = "https://github.com/fabriziosalmi/certmate-agent/releases/download/index-latest/index.json.gz"
+  AGENT_INDEX_PATH = "/data/docs_index/index.json.gz"
 
   # --- Storage ---
   AGENT_DB_PATH = "/data/agent.db"

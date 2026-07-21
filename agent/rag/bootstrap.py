@@ -5,7 +5,7 @@ image (would force a rebuild every reindex). Instead it downloads the
 artifact from the `index-latest` release on first boot.
 
 Configuration:
-    AGENT_INDEX_BOOTSTRAP_URL  full URL to index.pkl (e.g. the GitHub
+    AGENT_INDEX_BOOTSTRAP_URL  full URL to index.json.gz (e.g. the GitHub
                                release download URL). Empty disables.
     AGENT_INDEX_PATH           where to write it (already used by RagStore).
 
@@ -41,12 +41,11 @@ async def maybe_bootstrap_index() -> None:
     """If AGENT_INDEX_BOOTSTRAP_URL is set and the local index is missing,
     download it. Idempotent: safe to call on every boot.
 
-    Security: pickle.load() at the receiving end is code-execution by
-    design. We force the bootstrap URL to be HTTPS and, when
-    AGENT_INDEX_BOOTSTRAP_SHA256 is configured, verify the downloaded
-    bytes against that digest before moving the file into place. A
-    mismatched or unverified file is left as <name>.bootstrap.reject for
-    inspection, never loaded.
+    Security: the index is gzipped JSON, never pickle (#16), so a tampered
+    file cannot execute code — the worst it can do is give wrong answers.
+    The URL must still be HTTPS, and when AGENT_INDEX_BOOTSTRAP_SHA256 is
+    configured the bytes are verified before the file is moved into place; a
+    mismatch is left as <name>.bootstrap.reject for inspection, never loaded.
     """
     url = settings.agent_index_bootstrap_url.strip()
     if not url:
@@ -85,9 +84,10 @@ async def maybe_bootstrap_index() -> None:
             log.info("RAG index sha256 verified: %s", got)
         else:
             log.warning(
-                "RAG index bootstrap fetched without sha256 pin. Set "
-                "AGENT_INDEX_BOOTSTRAP_SHA256 to verify integrity — "
-                "pickle.load() on this file is RCE-equivalent."
+                "RAG index bootstrap fetched without a sha256 pin. Set "
+                "AGENT_INDEX_BOOTSTRAP_SHA256 to verify integrity: without "
+                "it, whoever can publish to that URL decides what this agent "
+                "says about CertMate."
             )
         tmp.replace(path)
         log.info("RAG index downloaded: %s (%d bytes)", path, path.stat().st_size)

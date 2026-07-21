@@ -39,9 +39,6 @@ export function parseSseBlock(block, callbacks) {
     } else if (event === "tool_result") {
       callbacks.clearStatus();
       callbacks.addTool(data.name, {}, data.preview, data.ok !== false);
-    } else if (event === "pending_confirm") {
-      callbacks.clearStatus();
-      callbacks.addConfirm(data);
     } else if (event === "message") {
       callbacks.clearStatus();
       // Server sends a final message event even when streaming, so prefer

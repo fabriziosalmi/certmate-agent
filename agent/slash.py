@@ -23,9 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .certmate_client import CertMateClient, CertMateError
 from .config import settings
-from .db import audit, save_pending_action
+from .db import audit
 from .rag import get_store
 from .rag.indexer import (
     DEFAULT_BRANCH,
@@ -37,9 +36,8 @@ from .rag.indexer import (
 )
 from .tools import REGISTRY, ToolKind, get_tool
 
-# Per-turn session id, set by dispatch() before invoking a handler. Read by
-# _run_read / _propose_write so they can forward it to CertMate audit. Using
-# a ContextVar keeps the handler signatures untouched (12 handlers).
+# Per-turn session id, set by dispatch() before invoking a handler, so audit
+# records can be attributed without threading it through every signature.
 _current_session: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_current_session", default=None
 )
@@ -57,9 +55,6 @@ class SlashCommand:
     usage: str
     aliases: list[str] = field(default_factory=list)
     admin_only: bool = False
-    # If True, the command requires a live CertMate API connection and is
-    # therefore unavailable in docs_only mode.
-    requires_certmate: bool = True
 
 
 _COMMANDS: dict[str, SlashCommand] = {}
@@ -184,52 +179,18 @@ async def _run_read(
         return
     yield _emit_tool_call(tool_name, args)
     try:
-        async with CertMateClient(agent_session_id=_current_session.get()) as c:
-            result = await tool.executor(c, dict(args))
+        result = await tool.executor(dict(args))
         audit("slash_call", "ok", tool_name=tool_name, args=args)
         yield _emit_tool_result(tool_name, True, result)
         if result_box is not None:
             result_box.append((True, result))
         return
-    except CertMateError as e:
-        audit("slash_call", "error", tool_name=tool_name, args=args,
-              detail=f"http_{e.status}: {e}")
-        err = {"error": str(e), "status": e.status}
-        yield _emit_tool_result(tool_name, False, err)
-        if result_box is not None:
-            result_box.append((False, err))
     except Exception as e:
         audit("slash_call", "error", tool_name=tool_name, args=args, detail=str(e))
         err = {"error": str(e)}
         yield _emit_tool_result(tool_name, False, err)
         if result_box is not None:
             result_box.append((False, err))
-
-
-async def _propose_write(
-    tool_name: str, args: dict[str, Any]
-) -> AsyncGenerator[dict[str, Any], None]:
-    """Queue a write tool as a pending_action and emit the confirm event."""
-    tool = get_tool(tool_name)
-    if tool is None or tool.kind is ToolKind.READ:
-        yield _emit_error(f"internal: tool '{tool_name}' is not a write tool")
-        return
-    summary = tool.summarize(args) if tool.summarize else f"Run {tool_name}"
-    token = await asyncio.to_thread(
-        save_pending_action, tool_name, args, summary, tool.kind.value,
-        _current_session.get(),
-    )
-    audit("slash_pending", "queued", tool_name=tool_name, args=args, detail=token)
-    yield {
-        "event": "pending_confirm",
-        "data": {
-            "token": token,
-            "tool": tool_name,
-            "args": args,
-            "summary": summary,
-            "kind": tool.kind.value,
-        },
-    }
 
 
 # ---------- handlers ----------
@@ -239,223 +200,21 @@ async def _h_help(_argv: list[str], is_admin: bool = False) -> AsyncGenerator[di
     for cmd in list_commands():
         if cmd.admin_only and not is_admin:
             continue
-        if settings.is_docs_only and cmd.requires_certmate:
-            continue
         aliases = f" _(also: {', '.join('/' + a for a in cmd.aliases)})_" if cmd.aliases else ""
         tag = " _(admin)_" if cmd.admin_only else ""
         lines.append(f"- `{cmd.usage}` — {cmd.summary}{tag}{aliases}")
     lines.append("")
-    if settings.is_docs_only:
-        lines.append(
-            "_Mode: **docs_only** — this instance has no live CertMate connection. "
-            "Ask questions about CertMate and its docs._"
-        )
-    else:
-        lines.append("Type a free-form question to talk to the LLM instead.")
+    lines.append(
+        "_This agent answers from the CertMate documentation. It has no "
+        "connection to a running instance and cannot see live state — for "
+        "that, use CertMate's own MCP server or its REST API._"
+    )
     yield _emit_message("\n".join(lines))
     yield _emit_done()
 
 
 def _unpack(box: list[Any]) -> tuple[bool, Any]:
     return box[0] if box else (False, None)
-
-
-async def _h_health(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    box: list[Any] = []
-    async for ev in _run_read("system_health", {}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok and isinstance(data, dict):
-        status = data.get("status", "?")
-        checks = data.get("checks") or {}
-        details = "\n".join(f"- `{k}`: {v}" for k, v in checks.items()) or "_(no checks)_"
-        yield _emit_message(f"**CertMate health: `{status}`**\n\n{details}")
-    else:
-        yield _emit_message("Health check failed — CertMate unreachable.")
-    yield _emit_done()
-
-
-async def _h_status(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    box: list[Any] = []
-    async for ev in _run_read("system_overview", {}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok and isinstance(data, dict):
-        health = data.get("health") or {}
-        cert_count = data.get("cert_count")
-        expiring = data.get("expiring_within_30d") or []
-        msg = [
-            f"**Health:** `{_cell(health.get('status'))}`",
-            f"**Certificates:** {_cell(cert_count)}",
-            "",
-        ]
-        if expiring:
-            msg.append(f"**Expiring within 30 days ({len(expiring)}):**")
-            # Normalize cells so missing fields render as em-dash, not "None".
-            normalized = [
-                {k: _cell(v) for k, v in row.items()} for row in expiring
-            ]
-            msg.append(_md_table(normalized, ["domain", "days_until_expiry", "status"]))
-        else:
-            msg.append("_No certificates expiring within 30 days._")
-        yield _emit_message("\n".join(msg))
-    else:
-        yield _emit_message("Could not fetch system overview.")
-    yield _emit_done()
-
-
-async def _h_expiring(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    days = 30
-    if argv:
-        try:
-            days = int(argv[0])
-        except ValueError:
-            yield _emit_error(f"`/expiring`: '{argv[0]}' is not a number of days")
-            yield _emit_done()
-            return
-    box: list[Any] = []
-    async for ev in _run_read("cert_list", {"expiring_within_days": days}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok and isinstance(data, list) and data:
-        rows = [
-            {
-                "domain": _cell(c.get("domain")),
-                "days": _cell(c.get("days_until_expiry")),
-                "status": _cell(c.get("status")),
-                "provider": _cell(c.get("dns_provider") or c.get("provider")),
-            }
-            for c in data if isinstance(c, dict)
-        ]
-        yield _emit_message(
-            f"**{len(rows)} certificate(s) expiring within {days} days:**\n\n"
-            + _md_table(rows, ["domain", "days", "status", "provider"])
-        )
-    elif ok:
-        yield _emit_message(f"_No certificates expiring within {days} days._")
-    else:
-        yield _emit_message("Could not list certificates.")
-    yield _emit_done()
-
-
-async def _h_list(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    box: list[Any] = []
-    async for ev in _run_read("cert_list", {}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok and isinstance(data, list) and data:
-        rows = [
-            {
-                "domain": _cell(c.get("domain")),
-                "days": _cell(c.get("days_until_expiry")),
-                "status": _cell(c.get("status")),
-                "auto_renew": _cell(c.get("auto_renew")),
-            }
-            for c in data if isinstance(c, dict)
-        ]
-        yield _emit_message(
-            f"**{len(rows)} certificate(s):**\n\n"
-            + _md_table(rows, ["domain", "days", "status", "auto_renew"])
-        )
-    elif ok:
-        yield _emit_message("_No certificates managed yet._")
-    else:
-        yield _emit_message("Could not list certificates.")
-    yield _emit_done()
-
-
-async def _h_cert(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    if not argv:
-        yield _emit_error("Usage: `/cert <domain>`")
-        yield _emit_done()
-        return
-    domain = argv[0]
-    box: list[Any] = []
-    async for ev in _run_read("cert_get", {"domain": domain}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok and isinstance(data, dict):
-        keys = ("domain", "status", "days_until_expiry", "not_after",
-                "dns_provider", "ca_provider", "auto_renew", "wildcard")
-        lines = [f"**Certificate `{domain}`**", ""]
-        for k in keys:
-            if k in data:
-                lines.append(f"- `{k}`: {data[k]}")
-        yield _emit_message("\n".join(lines))
-    else:
-        yield _emit_message(f"Could not fetch `{domain}`.")
-    yield _emit_done()
-
-
-async def _h_providers(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    box: list[Any] = []
-    async for ev in _run_read("dns_providers_info", {}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok:
-        yield _emit_message(_json_codeblock(data))
-    else:
-        yield _emit_message("Could not fetch DNS providers.")
-    yield _emit_done()
-
-
-async def _h_accounts(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    args: dict[str, Any] = {}
-    if argv:
-        args["provider"] = argv[0]
-    box: list[Any] = []
-    async for ev in _run_read("dns_accounts_list", args, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok:
-        yield _emit_message(_json_codeblock(data))
-    else:
-        yield _emit_message("Could not list DNS accounts.")
-    yield _emit_done()
-
-
-async def _h_backups(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    box: list[Any] = []
-    async for ev in _run_read("backups_list", {}, result_box=box):
-        yield ev
-    ok, data = _unpack(box)
-    if ok:
-        yield _emit_message(_json_codeblock(data))
-    else:
-        yield _emit_message("Could not list backups.")
-    yield _emit_done()
-
-
-async def _h_renew(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    if not argv:
-        yield _emit_error("Usage: `/renew <domain> [--force]`")
-        yield _emit_done()
-        return
-    args = {"domain": argv[0]}
-    if any(a in ("--force", "-f") for a in argv[1:]):
-        args["force"] = True
-    async for ev in _propose_write("cert_renew", args):
-        yield ev
-    yield _emit_message(f"Action queued. Click **Execute** to renew `{argv[0]}`.")
-    yield _emit_done()
-
-
-async def _h_deploy(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    if not argv:
-        yield _emit_error("Usage: `/deploy <domain>`")
-        yield _emit_done()
-        return
-    async for ev in _propose_write("cert_deploy", {"domain": argv[0]}):
-        yield ev
-    yield _emit_message(f"Action queued. Click **Execute** to run the deploy hook for `{argv[0]}`.")
-    yield _emit_done()
-
-
-async def _h_cache_clear(_argv: list[str], _is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
-    async for ev in _propose_write("cache_clear", {}):
-        yield ev
-    yield _emit_message("Action queued. Click **Execute** to clear cache.")
-    yield _emit_done()
 
 
 async def _h_reindex(argv: list[str], is_admin: bool = False) -> AsyncGenerator[dict[str, Any], None]:
@@ -569,44 +328,15 @@ async def _h_docs(argv: list[str], _is_admin: bool = False) -> AsyncGenerator[di
 # ---------- registration ----------
 
 _register(SlashCommand("help", _h_help, "List slash commands.", "/help",
-                       aliases=["?"], requires_certmate=False))
-_register(SlashCommand("health", _h_health, "CertMate service health.", "/health"))
-_register(SlashCommand("status", _h_status,
-                       "Overview: health + cert count + expiring within 30d.",
-                       "/status", aliases=["overview"]))
-_register(SlashCommand("expiring", _h_expiring,
-                       "Certs expiring within N days (default 30).",
-                       "/expiring [days]"))
-_register(SlashCommand("list", _h_list, "All managed certificates.",
-                       "/list", aliases=["certs", "ls"]))
-_register(SlashCommand("cert", _h_cert, "Details for one certificate.",
-                       "/cert <domain>"))
-_register(SlashCommand("providers", _h_providers,
-                       "Supported and configured DNS providers.",
-                       "/providers", aliases=["dns"]))
-_register(SlashCommand("accounts", _h_accounts,
-                       "Configured DNS accounts; optionally filtered by provider.",
-                       "/accounts [provider]"))
-_register(SlashCommand("backups", _h_backups, "List available backups.", "/backups"))
-_register(SlashCommand("renew", _h_renew,
-                       "Renew a certificate (requires confirm).",
-                       "/renew <domain> [--force]"))
-_register(SlashCommand("deploy", _h_deploy,
-                       "Run deploy hook for a certificate (requires confirm).",
-                       "/deploy <domain>"))
-_register(SlashCommand("cache-clear", _h_cache_clear,
-                       "Clear server cache (requires confirm).",
-                       "/cache-clear"))
+                       aliases=["?"]))
 _register(SlashCommand("docs", _h_docs,
                        "Search the CertMate documentation (RAG over docs).",
                        "/docs <query>",
-                       aliases=["ask"],
-                       requires_certmate=False))
+                       aliases=["ask"]))
 _register(SlashCommand("reindex", _h_reindex,
                        "Rebuild the docs index (admin only; requires AGENT_ADMIN_TOKEN).",
                        "/reindex [repo] [branch]",
-                       admin_only=True,
-                       requires_certmate=False))
+                       admin_only=True))
 
 
 # ---------- entrypoint used by chat_loop ----------
@@ -652,31 +382,12 @@ async def dispatch(
             )
             yield _emit_done()
         return _unknown()
-    if settings.is_docs_only and cmd.requires_certmate:
-        async def _disabled() -> AsyncGenerator[dict[str, Any], None]:
-            yield _emit_error(
-                f"`/{name}` is not available in docs_only mode "
-                "(no CertMate connection). Try `/docs <question>` or `/help`."
-            )
-            yield _emit_done()
-        return _disabled()
     return cmd.handler(argv, is_admin)
 
 
-# Sanity: every tool we reference here must exist in REGISTRY *for the
-# current mode*. In docs_only the CertMate-coupled tools are absent on
-# purpose, so we only require docs_search.
+# Sanity: every tool referenced here must exist in REGISTRY.
 _log_slash = logging.getLogger(__name__)
-_REFERENCED_TOOLS_FULL = {
-    "system_health", "system_overview", "cert_list", "cert_get",
-    "dns_providers_info", "dns_accounts_list", "backups_list",
-    "cert_renew", "cert_deploy", "cache_clear", "docs_search",
-}
-_REFERENCED_TOOLS_DOCS_ONLY = {"docs_search"}
-_required = (
-    _REFERENCED_TOOLS_DOCS_ONLY if settings.is_docs_only else _REFERENCED_TOOLS_FULL
-)
-_missing = _required - set(REGISTRY)
+_REFERENCED_TOOLS = {"docs_search"}
+_missing = _REFERENCED_TOOLS - set(REGISTRY)
 if _missing:  # pragma: no cover - dev guard
-    _log_slash.warning("slash.py references missing tools for mode=%s: %s",
-                       settings.agent_mode, _missing)
+    _log_slash.warning("slash.py references missing tools: %s", _missing)

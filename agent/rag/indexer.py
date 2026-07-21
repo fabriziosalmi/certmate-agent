@@ -4,7 +4,7 @@ Usage:
     python -m agent.rag.indexer                          # default: README + docs/*.md
     python -m agent.rag.indexer --repo owner/repo --branch main
 
-Writes `docs_index/index.pkl` next to the package by default.
+Writes `docs_index/index.json.gz` next to the package by default.
 """
 
 from __future__ import annotations
@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-import pickle
+import gzip
+import json
 import time
+from dataclasses import asdict
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
@@ -140,10 +142,19 @@ async def build_index_iter(
         embed_model=settings.lmstudio_embed_model,
         chunks=indexed,
     )
+    # Gzipped JSON, not pickle (#16): the hosted deployment downloads this
+    # file at boot, and pickle.load() on a downloaded file is RCE by design.
     # Atomic swap: write to tmp, rename onto target.
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
-    with tmp.open("wb") as f:
-        pickle.dump(idx, f, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = {
+        "repo": idx.repo,
+        "branch": idx.branch,
+        "built_at": idx.built_at,
+        "embed_model": idx.embed_model,
+        "chunks": [asdict(c) for c in idx.chunks],
+    }
+    with gzip.open(tmp, "wt", encoding="utf-8") as f:
+        json.dump(payload, f)
     tmp.replace(out_path)
 
     yield {

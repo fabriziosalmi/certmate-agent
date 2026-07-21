@@ -2,12 +2,20 @@
 
 ![CertMate Agent](./screenshot.png)
 
-Conversational assistant for [CertMate](https://www.certmate.org)
+Documentation assistant for [CertMate](https://www.certmate.org)
 ([source](https://github.com/fabriziosalmi/certmate)).
 
-Embedded local LLM (LM Studio by default) + a 1:1 mapping of CertMate's REST API as
-LLM-callable tools. Read tools auto-execute; write tools queue a `pending_action` with a
-human-readable summary and require an explicit confirmation from the UI.
+Embedded local LLM (LM Studio by default) + retrieval over CertMate's
+documentation. Ask how a feature works, how to configure a DNS provider, what
+DNS-01 or a deploy hook actually does — answers are grounded in the docs and
+cite the file they came from.
+
+**It does not connect to a running CertMate instance and holds no
+credentials.** For driving a live instance from an assistant, CertMate ships
+its own MCP server (`mcp/` in the CertMate repository), maintained where the
+API is maintained. This agent used to map that API too; a second mapping could
+only drift out of date, and it had — so it was removed in 0.2.0 along with the
+credential it needed to be useful.
 
 ## Ecosystem
 
@@ -19,34 +27,6 @@ Part of the [CertMate](https://github.com/fabriziosalmi/certmate) ecosystem:
 
 **Enterprise / high-scale** — multi-tenant, mTLS, white-label and NIS2-aligned deployments are available through *CertMate-ng* (source-available, BSL 1.1, EU-built). Contact **fabrizio.salmi@gmail.com**.
 
-## Operating modes
-
-Set `AGENT_MODE` to choose between:
-
-- **`full`** (default) — sidecar to a real CertMate instance. All tools
-  available: live state reads, write commands with confirm, admin (`/reindex`),
-  RAG over docs. Used for self-hosters running their own CertMate.
-
-- **`docs_only`** — public docs assistant. No CertMate API connection.
-  Only `docs_search` + `/help` + `/docs` available; the LLM's system prompt
-  is also adjusted to tell it there is no live state. Used for
-  agent.certmate.org-style deployments where anyone can ask questions
-  about CertMate features and configuration.
-
-Mode-dependent behavior:
-
-| | `full` | `docs_only` |
-|---|---|---|
-| Tools registered | 23 | 1 (`docs_search`) |
-| Slash commands | all | `/help`, `/docs`, `/ask` |
-| CertMate API client | opened per turn | not opened |
-| `/health.certmate` | live check | `"status": "disabled"` |
-| System prompt | "you can read live state + docs" | "no live state, docs only" |
-| Widget header badge | hidden | `DOCS ONLY` |
-
-The widget discovers the mode by hitting `/health` on mount and adapts
-its autocomplete + intro hint accordingly.
-
 ## Architecture
 
 ```
@@ -55,13 +35,14 @@ its autocomplete + intro hint accordingly.
             ▼
        FastAPI agent ──► LM Studio (chat + embeddings, OpenAI-compatible)
             │
-            └─► CertMate REST API (Bearer token)
+            └─► local docs index (gzipped JSON, no network at query time)
 ```
 
 - Single LLM endpoint, configurable via env (LM Studio by default).
-- Read tools run inline; write tools save a `pending_action` and return a `confirm_token`.
-  The widget posts to `/tools/execute` with the token to actually run them.
-- sqlite for conversations / pending actions / audit log.
+- One tool, `docs_search`, executed inline against the local index.
+- No CertMate connection and no credential: the agent cannot read or change
+  anything on an instance, which is the point.
+- sqlite for conversations + audit log.
 
 ## Run
 
@@ -87,10 +68,9 @@ Embed in CertMate or any page:
 
 | Method | Path | What |
 |---|---|---|
-| GET | `/health` | agent + LM Studio + CertMate health |
+| GET | `/health` | agent + LM Studio health |
 | GET | `/models` | check the configured chat/embed models are loaded |
 | POST | `/chat` | SSE stream — body `{message, history?}` |
-| POST | `/tools/execute` | confirm a queued write — body `{token}` |
 
 ## Model notes
 
@@ -101,39 +81,22 @@ Gemma's small variants are "thinking" models — they spend tokens on internal r
 producing output. If you see empty assistant replies, raise `AGENT_MAX_TOKENS` (try 2048+), or
 swap to an instruct model with reliable native tool-calling such as `qwen/qwen3-8b`.
 
-## Tool surface (1:1 with CertMate API)
+## Tool surface
 
-Read (auto-executed): `system_overview`, `system_health`, `cert_list`, `cert_get`,
-`cert_deployment_status`, `cert_dns_alias_check`, `settings_get`, `dns_providers_info`,
-`dns_accounts_list`, `dns_account_get`, `backups_list`, `storage_info`, `client_certs_list`.
-
-Write (require confirm): `cert_create`, `cert_renew`, `cert_auto_renew_toggle`, `cert_deploy`,
-`cache_clear`, `backup_create`, `dns_account_add`.
-
-Destructive (require confirm + extra UI warning): `backup_delete`, `dns_account_delete`.
+One tool: `docs_search`, retrieval over the CertMate documentation, executed
+locally against the index. There is no write path, so there is no confirmation
+flow.
 
 ## Slash commands (deterministic — skip the LLM)
 
 | Command | What |
 |---|---|
 | `/help` (`/?`) | List all commands |
-| `/health` | CertMate service health |
-| `/status` (`/overview`) | Health + cert count + certs expiring within 30d |
-| `/expiring [days]` | Certificates expiring within N days (default 30) |
-| `/list` (`/certs`, `/ls`) | All managed certificates |
-| `/cert <domain>` | Details for one certificate |
-| `/providers` (`/dns`) | Supported + configured DNS providers |
-| `/accounts [provider]` | Configured DNS accounts |
-| `/backups` | Available backups |
-| `/renew <domain> [--force]` | Renew (queues a confirm) |
-| `/deploy <domain>` | Run deploy hook (queues a confirm) |
-| `/cache-clear` | Clear server cache (queues a confirm) |
 | `/docs <query>` (`/ask`) | Search the CertMate docs (RAG) |
 | `/reindex [repo] [branch]` | Rebuild the docs index (admin only) |
 
 Slash commands bypass the LLM entirely — sub-200ms response, deterministic
-output, and write commands reuse the same confirm-token flow as LLM-emitted
-tool calls.
+output.
 
 ## Docs RAG (built once, queried locally)
 
@@ -148,7 +111,7 @@ python -m agent.rag.indexer --repo X/Y --branch main
 python -m agent.rag.indexer --paths README.md,docs/api.md
 ```
 
-Index is written to `docs_index/index.pkl` (~2 MB for 271 chunks). The
+Index is written to `docs_index/index.json.gz` (~2 MB for 271 chunks). The
 agent loads it lazily at first `docs_search` call — restart not required
 after rebuild.
 
@@ -197,7 +160,6 @@ In the widget, opt in with the `persist` attribute (generates a per-host
 A single asyncio task runs every `AGENT_CLEANUP_INTERVAL_SECONDS`
 (default 1 hour) and prunes:
 
-- expired `pending_actions` (always, regardless of persistence)
 - `conversation_messages` older than `AGENT_CONVERSATION_TTL_DAYS`
   (only when `AGENT_PERSIST_CONVERSATIONS=true`)
 
@@ -218,7 +180,7 @@ model). The widget receives an extra `status` event "served via
 openrouter" when the fallback handled the turn, so you can see it in the
 chat log.
 
-## Public deployment (`docs_only` on Fly.io + weekly index)
+## Public deployment (Fly.io + weekly index)
 
 Pre-built workflows + manifest ship the public docs assistant
 (`agent.certmate.org`-style) end-to-end:
@@ -227,7 +189,8 @@ Pre-built workflows + manifest ship the public docs assistant
 
 Runs every Monday 06:00 UTC and on manual trigger. Pulls
 `fabriziosalmi/certmate@main`, chunks + embeds the docs, publishes the
-resulting pickle as a `index-latest` GitHub Release.
+resulting index (gzipped JSON, never a pickle — see below) as an
+`index-latest` GitHub Release.
 
 Required repo secrets (`Settings → Secrets and variables → Actions`):
 
@@ -250,9 +213,11 @@ that serves the index. The store warns loudly if they don't match.
 
 ### 2. Fly.io deploy — `fly.toml` + `.github/workflows/deploy-fly.yml`
 
-The Fly app runs `AGENT_MODE=docs_only`, fetches the published index on
-cold start via `AGENT_INDEX_BOOTSTRAP_URL`, and uses Cloudflare Workers
-AI (or OpenRouter) for chat. Setup once:
+The Fly app fetches the published index on cold start via
+`AGENT_INDEX_BOOTSTRAP_URL` and uses Cloudflare Workers AI (or OpenRouter)
+for chat. Set `AGENT_INDEX_BOOTSTRAP_SHA256` to the digest of the artifact
+you intend to serve: without it, whoever can publish to that release decides
+what the agent says about CertMate. Setup once:
 
 ```bash
 fly apps create certmate-agent              # pick any name
