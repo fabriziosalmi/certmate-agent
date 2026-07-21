@@ -77,28 +77,31 @@ jobs:
           LMSTUDIO_EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
           # Anything for the chat model — the indexer doesn't call chat.
           LMSTUDIO_CHAT_MODEL: "unused-in-indexer"
-          AGENT_INDEX_PATH: ./docs_index/index.pkl
+          AGENT_INDEX_PATH: ./docs_index/index.json.gz
         run: |
           python -m agent.rag.indexer
-          ls -lh docs_index/index.pkl
+          ls -lh docs_index/index.json.gz
 
       - name: Write build metadata
         env:
           EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
         run: |
           python - <<'PY'
-          import json, os, pickle, sys, time
-          with open("docs_index/index.pkl", "rb") as f:
-              idx = pickle.load(f)
+          # Read the index as data (#16). This step used to pickle.load() it,
+          # which would now fail — and would have been the one place still
+          # unpickling the artifact this PR made safe.
+          import gzip, json, os, time
+          with gzip.open("docs_index/index.json.gz", "rt", encoding="utf-8") as f:
+              idx = json.load(f)
           meta = {
               "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "commit": os.environ.get("GITHUB_SHA", ""),
               "actor": os.environ.get("GITHUB_ACTOR", ""),
-              "embed_model": os.environ.get("EMBED_MODEL", "") or idx.embed_model,
-              "repo": idx.repo,
-              "branch": idx.branch,
-              "chunks": len(idx.chunks),
-              "size_bytes": os.path.getsize("docs_index/index.pkl"),
+              "embed_model": os.environ.get("EMBED_MODEL", "") or idx["embed_model"],
+              "repo": idx["repo"],
+              "branch": idx["branch"],
+              "chunks": len(idx["chunks"]),
+              "size_bytes": os.path.getsize("docs_index/index.json.gz"),
           }
           with open("docs_index/build-info.json", "w") as f:
               json.dump(meta, f, indent=2)
@@ -114,7 +117,7 @@ jobs:
           # — consumers pin to "index-latest" rather than versioned tags.
           gh release delete index-latest --yes --cleanup-tag || true
           gh release create index-latest \
-            docs_index/index.pkl \
+            docs_index/index.json.gz \
             docs_index/build-info.json \
             --title "Docs index (auto-rebuilt $(date -u +%Y-%m-%d))" \
             --notes "Auto-rebuilt weekly from fabriziosalmi/certmate@main. See build-info.json for embed_model + chunk count."
@@ -128,7 +131,7 @@ jobs:
             cat docs_index/build-info.json >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Artifact: \`https://github.com/${{ github.repository }}/releases/download/index-latest/index.pkl\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "Artifact: \`https://github.com/${{ github.repository }}/releases/download/index-latest/index.json.gz\`" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Build failed before metadata was written." >> "$GITHUB_STEP_SUMMARY"
           fi

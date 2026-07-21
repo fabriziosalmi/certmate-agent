@@ -2,7 +2,6 @@
 
 Single asyncio task that wakes every `AGENT_CLEANUP_INTERVAL_SECONDS`
 to prune:
-  - expired pending_actions (always)
   - conversation_messages older than `AGENT_CONVERSATION_TTL_DAYS`
     (only when persistence is enabled)
 
@@ -16,13 +15,12 @@ import logging
 from contextlib import asynccontextmanager
 
 from .config import settings
-from .db import audit_prune_older_than, conversation_prune_older_than, prune_expired_pending
+from .db import audit_prune_older_than, conversation_prune_older_than
 
 log = logging.getLogger(__name__)
 
 
 async def _cleanup_once() -> dict[str, int]:
-    pending = await asyncio.to_thread(prune_expired_pending)
     convs = 0
     if settings.agent_persist_conversations:
         convs = await asyncio.to_thread(
@@ -31,7 +29,7 @@ async def _cleanup_once() -> dict[str, int]:
     audit_rows = await asyncio.to_thread(
         audit_prune_older_than, settings.agent_audit_ttl_days
     )
-    return {"pending": pending, "conversations": convs, "audit": audit_rows}
+    return {"conversations": convs, "audit": audit_rows}
 
 
 async def _scheduler_loop(interval: int) -> None:

@@ -1,20 +1,10 @@
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-AgentMode = Literal["full", "docs_only"]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
-    # Operating mode:
-    #   - "full"       : everything; sidecar to a real CertMate instance.
-    #                    Live tools + write commands with confirm + admin.
-    #   - "docs_only"  : public-facing chat over the CertMate documentation.
-    #                    No CertMate API connection, only docs_search + help.
-    #                    Used for agent.certmate.org-style deployments.
-    agent_mode: AgentMode = "full"
 
     # Defaults to the LM Studio default port on the same host. Override via
     # env (LMSTUDIO_URL) — e.g. a Tailscale IP for a remote workstation, or
@@ -25,14 +15,10 @@ class Settings(BaseSettings):
     lmstudio_api_key: str = "lm-studio"
     lmstudio_timeout_seconds: float = 120.0
 
-    certmate_url: str = "http://localhost:8000"
-    certmate_token: str = ""
-    certmate_timeout_seconds: float = 30.0
-
     agent_host: str = "127.0.0.1"
     agent_port: int = 8765
     agent_db_path: str = "./agent.db"
-    agent_index_path: str = "./docs_index/index.pkl"
+    agent_index_path: str = "./docs_index/index.json.gz"
     # Optional: when set, the agent downloads the index from this URL on
     # boot if the local file is missing. Used by the docs_only deployment
     # on Fly.io to pick up the GH Actions release artifact at cold start.
@@ -40,7 +26,6 @@ class Settings(BaseSettings):
     agent_cors_origins: str = "http://localhost:8000"
 
     agent_log_level: str = "INFO"
-    agent_confirm_token_ttl_seconds: int = 300
     agent_max_tool_iterations: int = 6
     agent_max_tokens: int = 2048
     agent_temperature: float = 0.2
@@ -121,9 +106,6 @@ class Settings(BaseSettings):
     def fallback_enabled(self) -> bool:
         return bool(self.openrouter_api_key)
 
-    @property
-    def is_docs_only(self) -> bool:
-        return self.agent_mode == "docs_only"
 
 
 settings = Settings()

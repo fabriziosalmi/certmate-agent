@@ -37,13 +37,9 @@ log = logging.getLogger("certmate-agent")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    log.info("certmate-agent %s starting (mode=%s)", __version__, settings.agent_mode)
+    log.info("certmate-agent %s starting (documentation chat)", __version__)
     log.info("LMStudio: %s (chat=%s, embed=%s)",
              settings.lmstudio_url, settings.lmstudio_chat_model, settings.lmstudio_embed_model)
-    if settings.is_docs_only:
-        log.info("docs_only mode: CertMate API disabled, write/admin tools hidden")
-    else:
-        log.info("CertMate: %s", settings.certmate_url)
     if settings.fallback_enabled:
         log.info("Fallback LLM: OpenRouter %s (model=%s)",
                  settings.openrouter_url, settings.openrouter_model)

@@ -1,18 +1,17 @@
-import { SLASH_COMMANDS_COMMON, SLASH_COMMANDS_FULL } from "./commands.js";
+import { SLASH_COMMANDS } from "./commands.js";
 import { widgetTemplate } from "./template.js";
 import { renderMarkdown, prettifyMarkdown } from "./markdown.js";
 import { enhanceAssistantMessage } from "./ui.js";
 import { parseSseBlock } from "./api.js";
 
-function _slashCommands(serverMode) {
-  if (serverMode === "docs_only") return SLASH_COMMANDS_COMMON;
-  return [...SLASH_COMMANDS_COMMON, ...SLASH_COMMANDS_FULL];
+function _slashCommands() {
+  return SLASH_COMMANDS;
 }
 /**
  * <certmate-agent endpoint="http://localhost:8765"></certmate-agent>
  *
  * Tiny vanilla web component. Talks to the agent's SSE /chat endpoint
- * and renders tool calls / pending confirms / final messages.
+ * and renders tool calls / final messages.
  *
  * No build step. Drop into any page.
  */
@@ -219,7 +218,7 @@ class CertMateAgent extends HTMLElement {
       return;
     }
     const q = v.slice(1).toLowerCase();
-    const matches = _slashCommands(this.serverMode).filter(([name]) =>
+    const matches = _slashCommands().filter(([name]) =>
       name.slice(1).startsWith(q),
     );
     if (matches.length === 0) {
@@ -461,85 +460,6 @@ class CertMateAgent extends HTMLElement {
     return `${(ms / 1000).toFixed(1)}s`;
   }
 
-  _addConfirm(payload) {
-    const el = document.createElement("div");
-    const isDestructive = payload.kind === "write_destructive";
-    el.className = "confirm" + (isDestructive ? " destructive" : "");
-    el.setAttribute("role", "alertdialog");
-    el.setAttribute("aria-label", isDestructive ? "Confirm destructive action" : "Confirm action");
-    el.setAttribute("aria-modal", "false");
-    // tabindex=-1 makes the container itself focusable so screen readers
-    // jump to it; aria-live=assertive announces it without waiting for a
-    // polite cycle.
-    el.setAttribute("tabindex", "-1");
-    el.setAttribute("aria-live", "assertive");
-
-    // Tab order: for destructive actions, Cancel is the first focusable
-    // button so a stray Enter doesn't execute. For safe actions the
-    // primary action leads.
-    const cancelBtn = `<button data-act="cancel" type="button">Cancel</button>`;
-    const execBtn = `<button class="${isDestructive ? "danger" : "primary"}" data-act="exec" type="button">${isDestructive ? "Confirm & run" : "Execute"}</button>`;
-    const actions = isDestructive
-      ? `${cancelBtn}${execBtn}`
-      : `${execBtn}${cancelBtn}`;
-
-    el.innerHTML = `
-      <div class="confirm-label">${isDestructive ? "Destructive action" : "Proposed action"}</div>
-      <div class="confirm-summary md">${this._md(payload.summary || "")}</div>
-      <details><summary>${this._escape(payload.tool)} arguments</summary><pre>${this._escape(JSON.stringify(payload.args, null, 2))}</pre></details>
-      <div class="confirm-actions">${actions}</div>
-    `;
-    this._logEl.appendChild(el);
-    this._enhanceAssistantMessage(el);
-    this._scroll();
-
-    const execEl = el.querySelector('[data-act="exec"]');
-    const cancelEl = el.querySelector('[data-act="cancel"]');
-
-    // Move keyboard focus to the safe default: Cancel on destructive
-    // actions, Execute on safe ones. Browsers won't scroll the bubble
-    // off-screen here because the card itself is the focus target.
-    setTimeout(() => (isDestructive ? cancelEl : execEl).focus(), 0);
-
-    const runExec = async () => {
-      execEl.disabled = true;
-      execEl.classList.add("loading");
-      execEl.setAttribute("aria-busy", "true");
-      try {
-        const r = await fetch(`${this.endpoint}/tools/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: payload.token }),
-        });
-        const body = await r.json();
-        if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
-        this._addTool(payload.tool, payload.args, body.result, true);
-      } catch (err) {
-        this._addTool(payload.tool, payload.args, String(err), false);
-      } finally {
-        el.querySelectorAll("button").forEach((b) => (b.disabled = true));
-        execEl.classList.remove("loading");
-        execEl.removeAttribute("aria-busy");
-      }
-    };
-    const runCancel = () => {
-      el.querySelectorAll("button").forEach((b) => (b.disabled = true));
-      el.style.opacity = 0.55;
-    };
-
-    execEl.addEventListener("click", runExec);
-    cancelEl.addEventListener("click", runCancel);
-
-    // Keyboard shortcuts inside the confirm scope. Enter on the focused
-    // button is native — but Esc anywhere on the card should cancel.
-    el.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        runCancel();
-      }
-    });
-  }
-
   _addError(msg) {
     const el = document.createElement("div");
     el.className = "err";
@@ -693,7 +613,6 @@ class CertMateAgent extends HTMLElement {
         }
       },
       addTool: (n, a, r, o) => this._addTool(n, a, r, o),
-      addConfirm: (d) => this._addConfirm(d),
       onFinalMessage: onFinalMessage,
       addError: (m) => this._addError(m)
     });

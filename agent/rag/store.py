@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import math
-import pickle
+import gzip
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,9 +31,11 @@ def _default_index_path() -> Path:
 DEFAULT_INDEX_PATH = _default_index_path()
 
 
-# These dataclasses live here (not in indexer.py) so pickled instances
-# always reference `agent.rag.store.Index` regardless of how the indexer
-# was launched (python -m sets __main__ which breaks unpickling otherwise).
+# The index is serialised as gzipped JSON, not pickle (#16). Every field is a
+# string or a float, so nothing is lost — and `pickle.load()` on a file
+# fetched over the network at boot is remote code execution by design, which
+# no amount of care around the download can make safe. With JSON the worst a
+# tampered index can do is give bad answers, which the sha256 pin catches.
 @dataclass
 class IndexedChunk:
     text: str
@@ -49,6 +52,38 @@ class Index:
     built_at: float
     embed_model: str
     chunks: list[IndexedChunk]
+
+
+def _read_index(path: Path) -> "Index":
+    """Load a gzipped-JSON index. Refuses a legacy pickle outright.
+
+    Loading the old format would mean unpickling a file that, in the hosted
+    deployment, arrived over the network — so this raises instead, with the
+    command to rebuild.
+    """
+    with path.open("rb") as f:
+        magic = f.read(2)
+    # Protocol 2+ starts with \x80 <proto>; protocols 0 and 1 are ASCII
+    # opcodes, of which "(" and "]" are what a pickled object actually starts
+    # with. Detect the lot: falling through would give a JSON decode error
+    # instead of the actionable message, which is how someone spends an
+    # afternoon on it.
+    if magic[:1] == b"\x80" or magic[:1] in (b"(", b"]", b"}", b"c"):
+        raise ValueError(
+            f"{path} is a legacy pickle index. Rebuild it with "
+            "`python -m agent.rag.indexer` — pickle indexes are no longer "
+            "loaded (#16)."
+        )
+    opener = gzip.open if magic == b"\x1f\x8b" else open
+    with opener(path, "rt", encoding="utf-8") as f:  # type: ignore[operator]
+        raw = json.load(f)
+    return Index(
+        repo=raw["repo"],
+        branch=raw["branch"],
+        built_at=raw["built_at"],
+        embed_model=raw["embed_model"],
+        chunks=[IndexedChunk(**c) for c in raw["chunks"]],
+    )
 
 
 @dataclass
@@ -117,8 +152,7 @@ class RagStore:
             log.warning("RAG index not found at %s; docs_search will be empty", self.path)
             return False
         try:
-            with self.path.open("rb") as f:
-                self._index = pickle.load(f)
+            self._index = _read_index(self.path)
             self._loaded_at = time.time()
             self._unit_chunks = self._normalize_chunks(self._index.chunks)
             log.info("RAG index loaded: %d chunks (%s)",

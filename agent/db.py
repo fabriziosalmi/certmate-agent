@@ -1,4 +1,4 @@
-"""Lightweight sqlite store for conversations, pending confirms, and audit.
+"""Lightweight sqlite store for conversations and the audit trail.
 
 Sync API (sqlite3 stdlib) wrapped in `asyncio.to_thread` at call sites.
 Single-writer model — fine for an embedded agent.
@@ -7,7 +7,6 @@ Single-writer model — fine for an embedded agent.
 from __future__ import annotations
 
 import json
-import secrets
 import sqlite3
 import threading
 import time
@@ -28,18 +27,6 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 CREATE INDEX IF NOT EXISTS idx_conv_session_ts
     ON conversation_messages(session_id, ts);
 
-CREATE TABLE IF NOT EXISTS pending_actions (
-    token        TEXT PRIMARY KEY,
-    created_at   INTEGER NOT NULL,
-    expires_at   INTEGER NOT NULL,
-    tool_name    TEXT NOT NULL,
-    args_json    TEXT NOT NULL,
-    summary      TEXT NOT NULL,
-    kind         TEXT NOT NULL,
-    consumed     INTEGER NOT NULL DEFAULT 0,
-    session_id   TEXT
-);
-
 CREATE TABLE IF NOT EXISTS audit_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     ts           INTEGER NOT NULL,
@@ -50,7 +37,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail       TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending_actions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 """
 
@@ -91,70 +77,7 @@ def init_db() -> None:
     c.executescript(_SCHEMA)
     # Idempotent migration (additive only — sqlite has no DROP COLUMN
     # before 3.35, but we don't need that). Re-runnable on every boot.
-    cols = {row["name"] for row in c.execute("PRAGMA table_info(pending_actions)")}
-    if "session_id" not in cols:
-        c.execute("ALTER TABLE pending_actions ADD COLUMN session_id TEXT")
     c.commit()
-
-
-# ---------- pending actions ----------
-
-def save_pending_action(
-    tool_name: str,
-    args: dict[str, Any],
-    summary: str,
-    kind: str,
-    session_id: str | None = None,
-) -> str:
-    token = secrets.token_urlsafe(24)
-    now = int(time.time())
-    expires = now + settings.agent_confirm_token_ttl_seconds
-    with _conn() as c:
-        c.execute(
-            "INSERT INTO pending_actions(token, created_at, expires_at, tool_name, "
-            "args_json, summary, kind, consumed, session_id) VALUES (?,?,?,?,?,?,?,0,?)",
-            (token, now, expires, tool_name, json.dumps(args), summary, kind, session_id),
-        )
-    return token
-
-
-def consume_pending_action(token: str) -> dict[str, Any] | None:
-    """Mark a pending action consumed and return its payload. None if missing/expired/used."""
-    now = int(time.time())
-    with _conn() as c:
-        row = c.execute(
-            "SELECT * FROM pending_actions WHERE token=?", (token,)
-        ).fetchone()
-        if not row or row["consumed"] or row["expires_at"] < now:
-            return None
-        c.execute("UPDATE pending_actions SET consumed=1 WHERE token=?", (token,))
-        return {
-            "tool_name": row["tool_name"],
-            "args": json.loads(row["args_json"]),
-            "summary": row["summary"],
-            "kind": row["kind"],
-            # session_id may be NULL on rows created before the migration.
-            "session_id": row["session_id"] if "session_id" in row.keys() else None,
-        }
-
-
-def prune_expired_pending() -> int:
-    """Drop pending_actions rows that are either:
-      - past their `expires_at` (token can never be used anymore), or
-      - already `consumed=1` and at least 1h past `created_at` (kept
-        around briefly for debugging double-submit, then GC'd).
-
-    The audit table records the actual execution, so deleting these
-    rows is not a loss of forensic data.
-    """
-    now = int(time.time())
-    with _conn() as c:
-        cur = c.execute(
-            "DELETE FROM pending_actions "
-            "WHERE expires_at < ? OR (consumed = 1 AND created_at < ?)",
-            (now, now - 3600),
-        )
-        return cur.rowcount
 
 
 # ---------- audit log ----------
