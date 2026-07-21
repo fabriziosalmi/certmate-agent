@@ -22,6 +22,36 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+
+    {/*
+      Everything this site loads is first-party, so no external origin is
+      allowed anywhere in the policy.
+
+      script-src has no 'unsafe-inline': every script is a file under /_astro
+      and the built pages contain no inline <script> and no on* handler, which
+      is where the policy earns its keep against injected script.
+
+      style-src does need 'unsafe-inline'. Astro's build inlines small scoped
+      component styles into the page (build.inlineStylesheets: "auto"), so 11
+      of the 12 built pages carry one <style> block - the home page is the
+      exception only because its styles are large enough to be emitted as a
+      file. Setting inlineStylesheets: "never" would let this be 'self' too,
+      at the cost of an extra request per page; that is a performance decision
+      for the site owner, not something to change for a CSP directive.
+
+      connect-src 'self' covers the two things that reach the network: Astro's
+      prefetch script and the docs search, which fetches /brutal_qa_cache.json.
+      Both are same-origin. The stylesheets contain no url() and no @import.
+
+      frame-ancestors is absent because it is ignored in a <meta> policy;
+      framing is already denied by the X-Frame-Options: SAMEORIGIN response
+      header the Cloudflare transform rule adds in front of this site.
+    */}
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+
     <link rel="canonical" href={canonicalUrl} />
 
     <title>{title}</title>
