@@ -87,17 +87,20 @@ jobs:
           EMBED_MODEL: ${{ secrets.INDEX_EMBED_MODEL }}
         run: |
           python - <<'PY'
-          import json, os, pickle, sys, time
-          with open("docs_index/index.json.gz", "rb") as f:
-              idx = pickle.load(f)
+          # Read the index as data (#16). This step used to pickle.load() it,
+          # which would now fail — and would have been the one place still
+          # unpickling the artifact this PR made safe.
+          import gzip, json, os, time
+          with gzip.open("docs_index/index.json.gz", "rt", encoding="utf-8") as f:
+              idx = json.load(f)
           meta = {
               "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "commit": os.environ.get("GITHUB_SHA", ""),
               "actor": os.environ.get("GITHUB_ACTOR", ""),
-              "embed_model": os.environ.get("EMBED_MODEL", "") or idx.embed_model,
-              "repo": idx.repo,
-              "branch": idx.branch,
-              "chunks": len(idx.chunks),
+              "embed_model": os.environ.get("EMBED_MODEL", "") or idx["embed_model"],
+              "repo": idx["repo"],
+              "branch": idx["branch"],
+              "chunks": len(idx["chunks"]),
               "size_bytes": os.path.getsize("docs_index/index.json.gz"),
           }
           with open("docs_index/build-info.json", "w") as f:

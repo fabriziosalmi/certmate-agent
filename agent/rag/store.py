@@ -63,7 +63,12 @@ def _read_index(path: Path) -> "Index":
     """
     with path.open("rb") as f:
         magic = f.read(2)
-    if magic == b"\x80\x04" or magic == b"\x80\x05":
+    # Protocol 2+ starts with \x80 <proto>; protocols 0 and 1 are ASCII
+    # opcodes, of which "(" and "]" are what a pickled object actually starts
+    # with. Detect the lot: falling through would give a JSON decode error
+    # instead of the actionable message, which is how someone spends an
+    # afternoon on it.
+    if magic[:1] == b"\x80" or magic[:1] in (b"(", b"]", b"}", b"c"):
         raise ValueError(
             f"{path} is a legacy pickle index. Rebuild it with "
             "`python -m agent.rag.indexer` — pickle indexes are no longer "

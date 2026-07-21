@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 CREATE INDEX IF NOT EXISTS idx_conv_session_ts
     ON conversation_messages(session_id, ts);
 
+CREATE TABLE IF NOT EXISTS audit_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           INTEGER NOT NULL,
+    kind         TEXT NOT NULL,
+    tool_name    TEXT,
+    args_json    TEXT,
+    status       TEXT NOT NULL,
+    detail       TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 """
 

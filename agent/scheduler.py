@@ -2,7 +2,6 @@
 
 Single asyncio task that wakes every `AGENT_CLEANUP_INTERVAL_SECONDS`
 to prune:
-  - expired pending_actions (always)
   - conversation_messages older than `AGENT_CONVERSATION_TTL_DAYS`
     (only when persistence is enabled)
 
