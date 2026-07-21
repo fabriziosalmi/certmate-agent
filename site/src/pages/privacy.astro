@@ -2,7 +2,8 @@
 import Base from "../layouts/Base.astro";
 
 // Privacy & legal notice for agent.certmate.org — a static marketing page
-// for the (self-hosted, zero-telemetry) CertMate Agent. Behind Cloudflare.
+// for the (self-hosted, zero-telemetry) CertMate Agent. Served directly by
+// GitHub Pages — Cloudflare is the domain's DNS only, it does not proxy it.
 const title = "Privacy & legal — CertMate Agent";
 const description =
   "How agent.certmate.org handles data: no cookies, no analytics, no tracking. Data controller, processors and your GDPR rights.";
@@ -27,7 +28,7 @@ const description =
     <h2>Processors &amp; international transfers</h2>
     <ul>
       <li><strong>GitHub, Inc.</strong> (USA) — static hosting (GitHub Pages).</li>
-      <li><strong>Cloudflare, Inc.</strong> (USA) — CDN, HTTPS and edge security.</li>
+      <li><strong>Cloudflare, Inc.</strong> (USA) — authoritative DNS for the domain only; it does not proxy or serve this site's content.</li>
     </ul>
     <p>Serving the site transfers technical data (such as your IP) to the USA, covered by the providers' DPAs and the EU–US Data Privacy Framework / Standard Contractual Clauses.</p>
     <h2>Your rights</h2>
@@ -47,7 +48,7 @@ const description =
     <h2>Responsabili e trasferimenti extra-UE</h2>
     <ul>
       <li><strong>GitHub, Inc.</strong> (USA) — hosting statico (GitHub Pages).</li>
-      <li><strong>Cloudflare, Inc.</strong> (USA) — CDN, HTTPS e sicurezza edge.</li>
+      <li><strong>Cloudflare, Inc.</strong> (USA) — solo DNS autoritativo del dominio; non fa da proxy né eroga i contenuti di questo sito.</li>
     </ul>
     <p>L'erogazione trasferisce dati tecnici (come l'IP) verso gli USA, coperti dagli accordi sul trattamento e dal Data Privacy Framework UE–USA / SCC.</p>
     <h2>I tuoi diritti</h2>
