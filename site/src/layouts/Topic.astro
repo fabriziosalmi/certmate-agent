@@ -17,6 +17,25 @@ interface Props {
 
 const { title, description, slug, readTime, source } = Astro.props;
 
+// Each explainer is a TechArticle in its own right. `citation` points at the
+// CertMate document it is grounded in, which is the same claim the page makes
+// to a reader — the two should not be able to say different things.
+const articleLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: title,
+  description,
+  inLanguage: "en",
+  isPartOf: { "@type": "WebSite", name: "CertMate Agent", url: "https://agent.certmate.org/" },
+  about: { "@type": "Thing", name: "TLS certificate automation" },
+  citation: `https://github.com/fabriziosalmi/certmate/blob/main/${source.file}`,
+  publisher: {
+    "@type": "Organization",
+    name: "CertMate",
+    url: "https://www.certmate.org",
+  },
+};
+
 // Manual catalogue order — also drives prev/next. Keep in sync with
 // site/src/pages/topics/index.astro `topics` array.
 const order = [
@@ -38,6 +57,7 @@ const sourceUrl = `https://github.com/fabriziosalmi/certmate/blob/main/${source.
 const canonical = `/topics/${slug}/`;
 ---
 <Base title={title} description={description} canonical={canonical}>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(articleLd)} />
   <nav class="breadcrumb" aria-label="Breadcrumb">
     <a href="/">CertMate</a>
     <span aria-hidden="true">›</span>

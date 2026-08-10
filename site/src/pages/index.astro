@@ -3,27 +3,37 @@ import Base from "../layouts/Base.astro";
 import DocsSearch from "../components/DocsSearch.astro";
 ---
 <Base
-  title="CertMate Agent — The conversational control plane for your infrastructure"
-  description="A secure, self-hosted sidecar mapping CertMate's API to natural language and deterministic slash commands. Run locally, zero telemetry, full audit logs."
+  title="CertMate Agent — plain answers about TLS certificates, DNS-01 and ACME"
+  description="Explainers on DNS-01 validation, wildcard certificates, CNAME delegation, deploy hooks and automated renewal, plus a documentation assistant that runs a local LLM over CertMate's docs. No credentials, no telemetry."
 >
   <section class="hero">
-    <p class="eyebrow">Local LLM · RAG Docs · Deterministic Execution</p>
-    <h1>The conversational<br />control plane.</h1>
+    <p class="eyebrow">Local LLM · Retrieval over the docs · No credentials</p>
+    <h1>Plain answers about<br />TLS certificates.</h1>
     <p class="lead">
-      <strong>CertMate Agent</strong> maps your entire certificate infrastructure to natural language and deterministic slash commands. Run a local LLM as a sidecar to your cluster. Secure by default, strictly audited, zero external dependencies.
+      How DNS-01 validation actually works, when a wildcard is worth it, what
+      CNAME delegation buys you, and why a renewal that "succeeded" can still
+      leave the old certificate being served. Written for operators, grounded in
+      <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate</a>'s
+      documentation.
     </p>
 
     <div class="cta-row">
-      <a class="btn primary" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
-        View Repository ↗
+      <a class="btn primary" href="/topics/">
+        Read the explainers
       </a>
-      <a class="btn ghost" href="/topics/">
-        Documentation
+      <a class="btn ghost" href="https://www.certmate.org" rel="noopener">
+        CertMate ↗
       </a>
     </div>
 
     <p class="hero-foot subtle">
-      Designed for operators. Execute complex renewals, deploy hooks, and global cache clears via deterministic slash commands like <code>/renew example.com</code>, or query your live configuration naturally.
+      <strong>CertMate Agent</strong> also runs as a local documentation
+      assistant: an embedded LLM with retrieval over those docs, answering in
+      your terminal and citing the file it drew from. It holds no credentials
+      and never connects to a running instance — to drive a live CertMate from
+      an assistant, use the
+      <a href="https://github.com/fabriziosalmi/certmate/blob/main/docs/mcp.md" rel="noopener">MCP server</a>
+      that ships with CertMate itself, maintained where the API is maintained.
     </p>
   </section>
 
@@ -94,13 +104,16 @@ import DocsSearch from "../components/DocsSearch.astro";
 
   <section class="cta-bottom">
     <div class="cta-box">
-      <h2>Deploy the sidecar today.</h2>
+      <h2>Manage the certificates themselves with CertMate.</h2>
       <p class="muted">
-        Available as a standalone Python package or Docker container. Ready to integrate with your existing CertMate deployment in minutes.
+        Open source, self-hosted: issues and renews TLS certificates across 29 DNS providers, discovers the ones you did not issue, and deploys renewed certificates where they are needed. These pages explain the concepts; CertMate does the work.
       </p>
       <div class="cta-row centered">
-        <a class="btn primary" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
-          Get Started ↗
+        <a class="btn primary" href="https://www.certmate.org" rel="noopener">
+          CertMate ↗
+        </a>
+        <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
+          This assistant, on GitHub
         </a>
       </div>
     </div>
