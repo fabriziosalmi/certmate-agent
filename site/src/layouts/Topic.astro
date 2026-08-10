@@ -57,7 +57,7 @@ const sourceUrl = `https://github.com/fabriziosalmi/certmate/blob/main/${source.
 const canonical = `/topics/${slug}/`;
 ---
 <Base title={title} description={description} canonical={canonical}>
-  <script slot="head" type="application/ld+json" set:html={JSON.stringify(articleLd)} />
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(articleLd).replace(/</g, "\\u003c")} />
   <nav class="breadcrumb" aria-label="Breadcrumb">
     <a href="/">CertMate</a>
     <span aria-hidden="true">›</span>

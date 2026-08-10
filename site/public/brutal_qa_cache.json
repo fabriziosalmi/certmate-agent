@@ -1,26 +1,26 @@
 [
   {
     "q_it": "Come configuro Let's Encrypt con DNS-01?",
-    "a_it": "Per configurare Let's Encrypt tramite **DNS-01**, devi modificare il file di configurazione aggiungendo il token API del tuo provider DNS. Ad esempio, per Cloudflare, usa `CLOUDFLARE_API_TOKEN`.",
+    "a_it": "Le credenziali del provider DNS si inseriscono in Impostazioni -> Provider DNS nell'interfaccia web, oppure via `POST /api/settings`. Non si modifica un file di configurazione a mano e non sono variabili d'ambiente: sono salvate in `settings.json`, e ogni provider supporta piu account (produzione, staging, DR) selezionabili per singolo certificato.",
     "q_en": "How do I configure Let's Encrypt with DNS-01?",
-    "a_en": "To configure Let's Encrypt via **DNS-01**, modify the config file by adding your DNS provider's API token. For example, for Cloudflare, use `CLOUDFLARE_API_TOKEN`.",
-    "source": "docs/dns-01.md",
-    "title": "DNS-01 Challenge"
+    "a_en": "DNS provider credentials go in Settings -> DNS Providers in the web interface, or through `POST /api/settings`. There is no config file to hand-edit and they are not environment variables: they live in `settings.json`, and each provider supports multiple accounts (production, staging, DR) selectable per certificate.",
+    "source": "docs/dns-providers.md",
+    "title": "DNS Providers"
   },
   {
-    "q_it": "Quali provider DNS sono supportati nativamente da CertMate?",
-    "a_it": "CertMate supporta nativamente **Cloudflare, Route53, DigitalOcean, e Hetzner**. È possibile aggiungere plugin custom per altri provider.",
-    "q_en": "Which DNS providers are natively supported by CertMate?",
-    "a_en": "CertMate natively supports **Cloudflare, Route53, DigitalOcean, and Hetzner**. You can add custom plugins for other providers.",
-    "source": "docs/providers.md",
-    "title": "Supported Providers"
+    "q_it": "Quali provider DNS supporta nativamente CertMate?",
+    "a_it": "Ventinove, nativamente, tramite i plugin certbot corrispondenti: Cloudflare, Route 53, Azure, Google Cloud, DigitalOcean, Linode, Gandi, OVH, Hetzner, Porkbun, GoDaddy, deSEC, Vultr, RFC2136, Akamai EdgeDNS, PowerDNS, Namecheap, acme-dns e altri, piu `custom-script` per qualunque cosa non sia in elenco. Non serve aggiungere plugin per i provider principali: sono gia inclusi.",
+    "q_en": "Which DNS providers does CertMate support natively?",
+    "a_en": "Twenty-nine, natively, through the matching certbot plugins: Cloudflare, Route 53, Azure, Google Cloud, DigitalOcean, Linode, Gandi, OVH, Hetzner, Porkbun, GoDaddy, deSEC, Vultr, RFC2136, Akamai EdgeDNS, PowerDNS, Namecheap, acme-dns and more, plus `custom-script` for anything not on the list. You do not need to add plugins for the major providers - they ship in the image.",
+    "source": "docs/dns-providers.md",
+    "title": "DNS Providers"
   },
   {
     "q_it": "Come rinnovo un certificato manualmente?",
-    "a_it": "Usa il comando slack `/renew <dominio>`. L'agente chiederà conferma e forzerà il rinnovo scavalcando il check dei 30 giorni.",
+    "a_it": "Dalla dashboard, oppure con `POST /api/certificates/<dominio>/renew` e un token Bearer con ruolo operator. La richiesta puo tornare 202 con un `job_id` da interrogare su `/api/certificates/jobs`. Il rinnovo manuale scavalca la soglia dei 30 giorni. Questo lo fa CertMate: l'assistente in questo sito legge documentazione e non tocca la tua istanza.",
     "q_en": "How do I renew a certificate manually?",
-    "a_en": "Use the slack command `/renew <domain>`. The agent will ask for confirmation and force the renewal, bypassing the 30-day check.",
-    "source": "docs/commands.md",
-    "title": "Slash Commands"
+    "a_en": "From the dashboard, or with `POST /api/certificates/<domain>/renew` and a Bearer token holding the operator role. The request may return 202 with a `job_id` to poll at `/api/certificates/jobs`. A manual renewal bypasses the 30-day threshold. CertMate does this: the assistant on this site reads documentation and does not touch your instance.",
+    "source": "docs/api.md",
+    "title": "API Reference"
   }
 ]

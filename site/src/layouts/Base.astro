@@ -92,7 +92,7 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
         "url": "https://www.certmate.org",
         "sameAs": ["https://github.com/fabriziosalmi/certmate"]
       }
-    })} />
+    }).replace(/</g, "\\u003c")} />
 
     <slot name="head" />
   </head>

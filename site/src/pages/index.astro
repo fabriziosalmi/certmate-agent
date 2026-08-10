@@ -41,37 +41,39 @@ import DocsSearch from "../components/DocsSearch.astro";
 
   <section class="features">
     <div class="feature">
-      <h3>Deterministic Actions</h3>
+      <h3>Deterministic lookups</h3>
       <p class="muted">
-        Slash commands bypass the LLM entirely for critical operations. Sub-50ms latency for querying status, listing expiring certificates, or triggering specific deploy hooks.
+        <code>/docs</code> bypasses the LLM entirely and returns ranked excerpts straight from the index, each labelled with the file it came from. <code>/help</code> lists the commands, <code>/reindex</code> rebuilds the index. That is the whole surface.
       </p>
     </div>
     <div class="feature">
       <h3>Local LLM via LM Studio</h3>
       <p class="muted">
-        Zero data leaves your infrastructure. Plug in any OpenAI-compatible local model (defaulting to Gemma 4) to securely query your infrastructure and internal documentation.
+        Zero data leaves your machine. Point it at any OpenAI-compatible local model to ask questions about CertMate's documentation in your own terminal.
       </p>
     </div>
     <div class="feature">
-      <h3>Strict Access Control</h3>
+      <h3>Nothing to compromise</h3>
       <p class="muted">
-        Read tools execute inline. Write tools queue a <code>pending_action</code> requiring explicit human confirmation. Admin-only operations are gated via cryptographically secure tokens.
+        It reads documentation. It holds no CertMate credential, opens no connection to a running instance, and has no write path to anything. The API mapping it once had was removed in 0.2.0 — a second mapping of an API maintained elsewhere could only drift, and had.
       </p>
     </div>
     <div class="feature">
       <h3>Local RAG Engine</h3>
       <p class="muted">
-        Built-in document indexer chunks and embeds CertMate's documentation locally. Ask <code>/docs DNS-01 validation</code> and get precise, cited answers without hitting external APIs.
+        A built-in indexer chunks and embeds CertMate's documentation on your machine. Ask <code>/docs DNS-01 validation</code> and get ranked excerpts with their source file, without an external API call.
       </p>
     </div>
   </section>
 
   <section class="terminal-preview prose">
-    <h2>Operate at the speed of thought.</h2>
+    <h2>What it actually looks like.</h2>
     <p class="muted">
-      The web component widget drops into any administrative dashboard. It streams responses via SSE, manages conversation state locally, and gracefully handles complex data structures like JSON payloads and markdown tables.
+      Three commands, no credentials, no connection to anything but the local
+      model and the index on disk. Answers name the file they came from, so you
+      can go and read it.
     </p>
-    
+
     <div class="terminal-mockup">
       <div class="mockup-header">
         <span class="dot red"></span>
@@ -80,24 +82,13 @@ import DocsSearch from "../components/DocsSearch.astro";
         <span class="mockup-title">certmate-agent</span>
       </div>
       <div class="mockup-body">
-        <p class="user-line"><span>›</span> /expiring 14</p>
-        <p class="agent-line">System connected. 2 certificates expiring within 14 days:</p>
-        <table class="mockup-table">
-          <thead><tr><th>Domain</th><th>Expiry</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>api.production.internal</td><td>6 days</td><td class="warn">Action Required</td></tr>
-            <tr><td>cdn.example.com</td><td>12 days</td><td class="warn">Action Required</td></tr>
-          </tbody>
-        </table>
-        <p class="user-line"><span>›</span> /renew api.production.internal</p>
-        <div class="mockup-confirm">
-          <strong>Proposed Action:</strong> Renew Certificate<br/>
-          <span class="muted">Target: api.production.internal</span>
-          <div class="mockup-actions">
-            <button class="mockup-btn primary">Execute</button>
-            <button class="mockup-btn">Cancel</button>
-          </div>
-        </div>
+        <p class="user-line"><span>&#8250;</span> /docs DNS-01 validation</p>
+        <p class="agent-line">Top 3 excerpt(s) for <code>DNS-01 validation</code>:</p>
+        <p class="agent-line"><code>docs/dns-providers.md</code> <em>(DNS-01 challenge)</em> — score 0.82</p>
+        <p class="agent-line"><code>docs/guide.md</code> <em>(Creating a certificate)</em> — score 0.71</p>
+        <p class="agent-line"><code>docs/ca-providers.md</code> <em>(Wildcards)</em> — score 0.64</p>
+        <p class="user-line"><span>&#8250;</span> why does a wildcard need DNS-01?</p>
+        <p class="agent-line">Because HTTP-01 proves control of a single hostname by serving a file on it, and there is no host to serve from for <code>*.example.com</code>. DNS-01 proves control of the zone instead, which is what a wildcard actually asserts. <em>(docs/dns-providers.md)</em></p>
       </div>
     </div>
   </section>
