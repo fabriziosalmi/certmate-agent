@@ -48,7 +48,8 @@ Part of the [CertMate](https://github.com/fabriziosalmi/certmate) ecosystem:
 
 ```bash
 cp .env.example .env
-# set CERTMATE_URL + CERTMATE_TOKEN, point LMSTUDIO_URL at your LM Studio server
+# point LMSTUDIO_URL at your LM Studio server. There is no CertMate URL or
+# token to set: config.py has no such setting and the agent never calls one.
 
 uv pip install -e .          # or: pip install -e .
 python -m agent.main

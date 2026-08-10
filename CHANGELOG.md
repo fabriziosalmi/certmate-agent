@@ -8,6 +8,29 @@ The image at `ghcr.io/fabriziosalmi/certmate-agent:<tag>` is signed
 with cosign (keyless) and ships SLSA L3 build provenance. Verification
 recipe in the README.
 
+## [0.2.0] — 2026-07-21
+
+The agent stops being a second mapping of CertMate's API.
+
+### Removed — breaking
+
+- **The 23 tools mapped 1:1 to CertMate's REST surface, and the credential
+  they needed.** A second mapping of an API maintained in another repository
+  could only drift out of date, and had. Driving a live instance from an
+  assistant is now CertMate's own MCP server (`mcp/` in the CertMate
+  repository), maintained where the API is maintained.
+- **The `pending_action` confirm-token flow**, and with it the
+  `/tools/execute` route. There are no write tools left to confirm.
+- **The `full` / `docs_only` mode split as a deployment choice.** `/health`
+  reports `mode: "docs_only"` because that is the only mode.
+
+### What remains
+
+- One tool, `docs_search`, executed inline against a local index.
+- Three slash commands: `/help`, `/docs`, `/reindex`.
+- No CertMate URL, no CertMate token, no connection to a running instance.
+  `agent/config.py` defines no `CERTMATE_*` setting at all.
+
 ## [0.1.0] — 2026-05-17
 
 First public cut. The agent has gone through three audit/hardening
