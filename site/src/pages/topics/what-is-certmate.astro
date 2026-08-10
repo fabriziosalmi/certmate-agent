@@ -3,7 +3,7 @@ import Topic from "../../layouts/Topic.astro";
 ---
 <Topic
   title="What CertMate is (and isn't) — vs certbot, Caddy, Traefik"
-  description="CertMate is a self-hosted certificate manager: a web UI and REST API around certbot, with first-class DNS-01 across 23 DNS providers, role-scoped API keys, and a deploy-hook system that pushes renewals to your edge. Here's where it fits."
+  description="CertMate is a self-hosted certificate manager: a web UI and REST API around certbot, with first-class DNS-01 across 29 DNS providers, role-scoped API keys, and a deploy-hook system that pushes renewals to your edge. Here's where it fits."
   slug="what-is-certmate"
   readTime="5 min"
   source={{ file: "README.md", section: "Why CertMate? / Key Features" }}
@@ -20,7 +20,7 @@ import Topic from "../../layouts/Topic.astro";
 <p>
   CertMate answers that question. It's a service, not a script: a Flask
   app with a web UI, a REST API, persistent state, role-based access
-  control, an audit log, and DNS-01 plugins for 23 DNS providers. You
+  control, an audit log, and DNS-01 plugins for 29 DNS providers. You
   point it at a domain, pick a provider, and it issues the certificate
   and keeps it renewed. When a renewal lands it fires a configurable
   shell command per domain so nginx / HAProxy / your edge cluster gets
@@ -61,7 +61,7 @@ import Topic from "../../layouts/Topic.astro";
   </li>
   <li>
     <strong>Deploy hooks as a first-class contract.</strong> When a
-    cert is created, renewed, or revoked, CertMate runs configured shell
+    cert is created or renewed, CertMate runs configured shell
     commands with the new file paths exposed as environment variables.
     No symlink-shuffling, no "where did the new cert go" — see the
     <a href="/topics/deploy-hooks/">deploy hooks topic</a> for the

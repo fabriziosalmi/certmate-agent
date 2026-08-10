@@ -3,7 +3,7 @@ import Topic from "../../layouts/Topic.astro";
 ---
 <Topic
   title="Deploy hooks: from renewed certificate to live edge"
-  description="A renewed certificate sitting on disk is half the job. CertMate's deploy hook system runs a shell command per domain when a cert is created, renewed, or revoked — and the env contract is explicit enough to script against. Here's the schema, the security model, and the recipes that actually work."
+  description="A renewed certificate sitting on disk is half the job. CertMate's deploy hook system runs a shell command per domain when a cert is created or renewed — and the env contract is explicit enough to script against. Here's the schema, the security model, and the recipes that actually work."
   slug="deploy-hooks"
   readTime="8 min"
   source={{ file: "docs/deploy-hooks.md", section: "What a hook is + Recipes" }}
@@ -34,7 +34,7 @@ import Topic from "../../layouts/Topic.astro";
     <tr><td><code>command</code></td><td>string</td><td>yes</td><td>A single shell command run via <code>sh -c</code>. Max 1024 chars.</td></tr>
     <tr><td><code>enabled</code></td><td>boolean</td><td>no</td><td>Default <code>true</code>. Disabled hooks skip automatic firing but can still be tested manually.</td></tr>
     <tr><td><code>timeout</code></td><td>integer</td><td>no</td><td>Seconds. Default 30, capped at the system max (300).</td></tr>
-    <tr><td><code>on_events</code></td><td>string[]</td><td>no</td><td>Subset of <code>["created", "renewed", "revoked"]</code>. Absent = all three.</td></tr>
+    <tr><td><code>on_events</code></td><td>string[]</td><td><strong>effectively yes</strong></td><td>Which events fire this hook: <code>["created", "renewed"]</code>. The filter is <code>event_type in hook.get('on_events', [])</code>, so an <strong>absent or empty list matches nothing and the hook never fires automatically</strong> &mdash; it does not mean &ldquo;all events&rdquo;. A manual test still runs it.</td></tr>
   </tbody>
 </table>
 
@@ -71,7 +71,7 @@ import Topic from "../../layouts/Topic.astro";
     <tr><td><code>CERTMATE_CERT_PATH</code></td><td><code>/app/certificates/api.example.com/cert.pem</code></td></tr>
     <tr><td><code>CERTMATE_KEY_PATH</code></td><td><code>/app/certificates/api.example.com/privkey.pem</code></td></tr>
     <tr><td><code>CERTMATE_FULLCHAIN_PATH</code></td><td><code>/app/certificates/api.example.com/fullchain.pem</code></td></tr>
-    <tr><td><code>CERTMATE_EVENT</code></td><td><code>created</code> / <code>renewed</code> / <code>revoked</code> / <code>manual</code></td></tr>
+    <tr><td><code>CERTMATE_EVENT</code></td><td><code>created</code> / <code>renewed</code> / <code>manual</code></td></tr>
     <tr><td><code>CERTMATE_DRY_RUN</code></td><td>Set to <code>1</code> during dry-run only; absent otherwise.</td></tr>
   </tbody>
 </table>
@@ -126,23 +126,22 @@ import Topic from "../../layouts/Topic.astro";
   certificates from S3.
 </p>
 
-<h3>Page on revocation</h3>
+<h3>Reacting to a specific event</h3>
 
-<pre><code>{`if [ "$CERTMATE_EVENT" = "revoked" ]; then
-  curl -X POST "$PAGERDUTY_INTEGRATION_URL" \\
-    -H "Content-Type: application/json" \\
-    -d "{ \\"event_action\\": \\"trigger\\",
-          \\"payload\\": {
-            \\"summary\\": \\"Cert revoked: $CERTMATE_DOMAIN\\",
-            \\"severity\\": \\"critical\\",
-            \\"source\\": \\"certmate\\"
-          } }"
+<pre><code>{`if [ "$CERTMATE_EVENT" = "created" ]; then
+  curl -s -X POST "$SLACK_WEBHOOK" \\
+    -H 'Content-Type: application/json' \\
+    -d "{
+          \\"summary\\": \\"New cert issued: $CERTMATE_DOMAIN\\",
+          \\"event\\": \\"$CERTMATE_EVENT\\"
+        }"
 fi`}</code></pre>
 
 <p>
-  Same hook, scoped via <code>on_events: ["revoked"]</code> so the
-  event check is belt-and-suspenders. PagerDuty integration URL goes
-  in the CertMate process env.
+  Scope it with <code>on_events: ["created"]</code> so the hook is only invoked
+  for that event in the first place. There is no revocation event: the mapping
+  in <code>deployer.py</code> covers <code>certificate_created</code> and
+  <code>certificate_renewed</code> only.
 </p>
 
 <h3>Skip during dry-run</h3>

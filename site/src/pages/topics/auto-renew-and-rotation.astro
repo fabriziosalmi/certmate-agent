@@ -21,14 +21,15 @@ import Topic from "../../layouts/Topic.astro";
 <h2>The scheduler</h2>
 
 <p>
-  CertMate's background scheduler runs an <code>APScheduler</code>
-  job. Every certificate has a per-record{" "}
-  <code>renewal_threshold_days</code> (default 30, override per cert).
-  The scheduler wakes regularly — frequently enough that a freshly
-  expiring certificate is picked up within hours, not days — walks the
-  certificate list, and for each one whose{" "}
-  <code>days_until_expiry &lt;= renewal_threshold_days</code> AND
-  <code>auto_renew == true</code>, fires a renewal.
+  CertMate's background scheduler runs an <code>APScheduler</code> cron job
+  <strong>once a day, at 02:00</strong>. <code>renewal_threshold_days</code> is
+  a <strong>global</strong> setting (default 30, clamped to 1&ndash;365) &mdash;
+  there is no per-certificate override. On each pass it walks the certificate
+  list and, for every one whose{" "}
+  <code>days_until_expiry &lt;= renewal_threshold_days</code> and whose{" "}
+  <code>auto_renew</code> is true, fires a renewal. A certificate that crosses
+  the threshold at 02:01 waits until the next day, which is why the default
+  threshold is thirty days and not three.
 </p>
 
 <p>
@@ -51,7 +52,7 @@ import Topic from "../../layouts/Topic.astro";
   <tbody>
     <tr><td><code>auto_renew</code></td><td><code>true</code></td><td>Master switch per certificate.</td></tr>
     <tr><td><code>renewal_threshold_days</code></td><td><code>30</code></td><td>Renew when expiry is within N days. Some operators set this lower (14) for low-traffic certs to minimize unnecessary issuance; some set it higher (45) when the deploy hook is heavy.</td></tr>
-    <tr><td><code>dns_provider</code> + <code>dns_account_id</code></td><td>at-creation values</td><td>Renewals use the same DNS path that issued the cert. Switch providers by PATCHing the record before the next renewal window.</td></tr>
+    <tr><td><code>dns_provider</code> + <code>dns_account_id</code></td><td>at-creation values</td><td>Renewals use the same DNS path that issued the cert. To move a certificate to a different provider or account, reissue it: <code>POST /api/certificates/&lt;domain&gt;/reissue</code>. There is no PATCH route.</td></tr>
   </tbody>
 </table>
 
@@ -119,11 +120,10 @@ import Topic from "../../layouts/Topic.astro";
 </p>
 
 <p>
-  The <em>only</em> way you notice this in time is by watching the
-  audit log or wiring a deploy hook on a synthetic{" "}
-  <code>revoked</code> event. CertMate is honest about this — the
-  v2.5.5 release notes call out audit log monitoring as the
-  operator's responsibility.
+  The way you notice this in time is by watching the audit log &mdash;
+  <code>certificate_revoked</code> is one of the events it records. There is no
+  deploy-hook event for it: hooks fire on <code>created</code> and
+  <code>renewed</code> only, so a revocation cannot page you through that path.
 </p>
 
 <h3>CAA record drift</h3>
@@ -150,8 +150,7 @@ import Topic from "../../layouts/Topic.astro";
   Rare but real. CertMate's behavior is to retry with the back-off
   schedule baked into the certbot plugin (typically 3 attempts over
   a few minutes). If the outage outlasts that, the renewal fails and
-  is retried on the next scheduler pass — usually several hours
-  later. For a sub-30-day expiry buffer this is fine; for a tight
+  is retried on the next scheduler pass &mdash; the following day at 02:00. For a sub-30-day expiry buffer this is fine; for a tight
   renewal window you'll want to pin to a DR account
   (<a href="/topics/multi-account-dns/">multi-account DNS</a>) or
   delegate validation to a more reliable provider
@@ -186,7 +185,8 @@ import Topic from "../../layouts/Topic.astro";
   question directly — every record carries <code>days_until_expiry</code> and
   <code>auto_renew</code>, so the filter is a one-liner against the response.
   The first is a ranged audit-log read against{" "}
-  <code>/api/audit?operation=renew&amp;status=error</code>.
+  <code>/api/web/audit-logs</code>, filtered client-side on
+  <code>operation == "renew" and status == "error"</code>.
 </p>
 
 <h2>Disabling auto-renewal</h2>
