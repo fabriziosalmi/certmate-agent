@@ -441,7 +441,7 @@ class CertMateAgent extends HTMLElement {
     const glyph = result === undefined
       ? `<span class="glyph spin" aria-hidden="true"></span>`
       : `<span class="glyph" aria-hidden="true">${ok ? "→" : "×"}</span>`;
-    // slopless-disable-next-line VBC-070 -- every interpolated value goes through _escape above
+    // slopless-disable-next-line VBC-070 -- name and args go through _escape; glyph is a constant
     el.innerHTML = `
       <div>
         ${glyph}

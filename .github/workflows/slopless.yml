@@ -2,9 +2,11 @@
 #
 # Errors fail the build. Warnings only report.
 #
-# Findings reach the Security tab on a push and on a pull request from this
-# repository. A fork gets a read-only token whatever `permissions:` says, so its
-# findings stay in the job log; the build still fails on an error either way.
+# Uploading findings to the Security tab is best effort. A fork gets a read-only
+# token whatever `permissions:` says, so the upload is skipped there, and it is
+# allowed to fail elsewhere rather than turn an API hiccup into a red build.
+# Whether it uploads or not, the findings are in the job log and an error still
+# fails the build.
 name: slopless
 
 on:
