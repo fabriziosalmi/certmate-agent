@@ -109,9 +109,14 @@ curl -X POST http://localhost:8000/api/dns/cloudflare/accounts \\
   -d '{
     "domain": "example.com",
     "san_domains": ["*.example.com"],
-    "dns_provider": "cloudflare",
-    "auto_renew": true
+    "dns_provider": "cloudflare"
   }'`}</code></pre>
+
+<p>
+  There is no <code>auto_renew</code> field on create &mdash; the create model
+  does not define one and the handler never reads it. Auto-renewal is on by
+  default and toggled separately, in step 6.
+</p>
 
 <p>
   This kicks off the DNS-01 dance described in
@@ -128,13 +133,19 @@ curl -X POST http://localhost:8000/api/dns/cloudflare/accounts \\
 </p>
 
 <pre><code>{`{
+  "message": "Certificate created successfully for example.com",
   "domain": "example.com",
-  "status": "issued",
-  "expiry_date": "2027-08-15T12:34:56Z",
-  "days_until_expiry": 90,
-  "cert_path": "/app/certificates/example.com/cert.pem",
-  "san_domains": ["*.example.com"]
+  "dns_provider": "cloudflare",
+  "ca_provider": "letsencrypt",
+  "duration": 47.2
 }`}</code></pre>
+
+<p>
+  On an instance with asynchronous issuance enabled the same call returns
+  <strong>202</strong> with a <code>job_id</code> instead; poll it at{" "}
+  <code>GET /api/certificates/jobs</code>. Either way the expiry and SAN list
+  come from a follow-up read of the certificate, not from this response.
+</p>
 
 <h2>5. Verify the certificate</h2>
 
@@ -152,14 +163,15 @@ openssl x509 -in fullchain.pem -noout -text \\
 # Read the expiry
 openssl x509 -in fullchain.pem -noout -enddate`}</code></pre>
 
-<h2>6. Wire auto-renewal (you already did)</h2>
+<h2>6. Wire auto-renewal</h2>
 
 <p>
-  You set <code>auto_renew: true</code> in step 4, so there's nothing
-  else to do. CertMate's scheduler wakes every few hours, picks up
-  any certificate within 30 days of expiry, runs the DNS-01 dance
-  again (same SAN list, new serial), and atomically swaps the files
-  on disk.
+  Auto-renewal is on unless you turn it off &mdash; there was nothing to set at
+  creation. CertMate's scheduler runs once a day at 02:00, picks up any
+  certificate inside the global <code>renewal_threshold_days</code> window (30
+  by default), runs the DNS-01 exchange again with the same SAN list, and
+  atomically swaps the files on disk. To turn it off for one certificate:{" "}
+  <code>POST /api/certificates/&lt;domain&gt;/auto-renew</code>.
 </p>
 
 <p>
@@ -168,13 +180,15 @@ openssl x509 -in fullchain.pem -noout -enddate`}</code></pre>
 
 <pre><code>{`curl -s http://localhost:8000/api/certificates/example.com \\
   -H "Authorization: Bearer $TOKEN" \\
-  | jq '{ auto_renew, renewal_threshold_days, days_until_expiry }'
+  | jq '{ auto_renew, days_until_expiry }'
 
 # {
 #   "auto_renew": true,
-#   "renewal_threshold_days": 30,
 #   "days_until_expiry": 90
-# }`}</code></pre>
+# }
+#
+# renewal_threshold_days is not on the certificate record - it is a
+# single global setting, readable from GET /api/settings.`}</code></pre>
 
 <h2>7. (Optional but recommended) Wire a deploy hook</h2>
 

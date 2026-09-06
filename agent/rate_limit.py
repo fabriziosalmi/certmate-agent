@@ -1,4 +1,4 @@
-"""In-memory per-IP rate limiter for /chat and /tools/execute.
+"""In-memory per-IP rate limiter for /chat.
 
 Simple token-bucket: each remote IP gets `capacity` tokens, refilled at
 `capacity/period` tokens/sec. When the bucket is empty the request is

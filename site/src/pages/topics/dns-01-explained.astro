@@ -166,9 +166,14 @@ import Topic from "../../layouts/Topic.astro";
 <ul>
   <li>
     <strong>You don't have DNS API access.</strong> A managed DNS that
-    only exposes a web UI is fine for HTTP-01 (the cert manager just
-    serves a file). CertMate doesn't offer this path because the
-    central premise is automation.
+    only exposes a web UI is fine for HTTP-01 &mdash; the cert manager just
+    serves a file. CertMate does support this: <code>HTTP01Strategy</code>
+    drives certbot's <code>--webroot</code> plugin, needs no DNS credentials
+    at all, and CertMate serves the challenge under
+    <code>/.well-known/acme-challenge/</code> (webroot configurable with
+    <code>ACME_CHALLENGES_DIR</code>). What it cannot do is issue a
+    <strong>wildcard</strong>, because Let's Encrypt only accepts DNS-01 for
+    those &mdash; which is the reason most of this page is about DNS-01.
   </li>
   <li>
     <strong>Your DNS provider has slow propagation under load and

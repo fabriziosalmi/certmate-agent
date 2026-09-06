@@ -89,8 +89,9 @@ import Topic from "../../layouts/Topic.astro";
   CertMate runs certbot under the hood with{" "}
   <code>--dns-cloudflare --domain '*.example.com'</code>, polls for
   propagation, retrieves the certificate, and stores it under
-  <code>/app/certificates/_.example.com/</code> (the leading
-  asterisk gets normalized to an underscore on disk for path safety).
+  <code>/app/certificates/*.example.com/</code> &mdash; the directory is the
+  domain verbatim (<code>cert_dir / domain</code>), asterisk included. Quote it
+  in a shell.
 </p>
 
 <p>
@@ -124,10 +125,10 @@ import Topic from "../../layouts/Topic.astro";
 </p>
 
 <p>
-  The fix is operational: monitor the audit log for renewal failures
-  (CertMate writes one audit row per attempt), or wire a
-  <a href="/topics/deploy-hooks/">deploy hook on the <code>revoked</code>
-  event</a> to page someone.
+  The fix is operational: monitor the audit log for renewal failures &mdash;
+  CertMate writes one audit row per attempt. A deploy hook cannot cover this
+  case: <a href="/topics/deploy-hooks/">hooks</a> fire on <code>created</code>
+  and <code>renewed</code>, not on a failure or a revocation.
 </p>
 
 <h2>Security considerations</h2>

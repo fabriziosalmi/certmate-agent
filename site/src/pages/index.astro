@@ -3,27 +3,37 @@ import Base from "../layouts/Base.astro";
 import DocsSearch from "../components/DocsSearch.astro";
 ---
 <Base
-  title="CertMate Agent — The conversational control plane for your infrastructure"
-  description="A secure, self-hosted sidecar mapping CertMate's API to natural language and deterministic slash commands. Run locally, zero telemetry, full audit logs."
+  title="CertMate Agent — plain answers about TLS certificates, DNS-01 and ACME"
+  description="Explainers on DNS-01 validation, wildcard certificates, CNAME delegation, deploy hooks and automated renewal, plus a documentation assistant that runs a local LLM over CertMate's docs. No credentials, no telemetry."
 >
   <section class="hero">
-    <p class="eyebrow">Local LLM · RAG Docs · Deterministic Execution</p>
-    <h1>The conversational<br />control plane.</h1>
+    <p class="eyebrow">Local LLM · Retrieval over the docs · No credentials</p>
+    <h1>Plain answers about<br />TLS certificates.</h1>
     <p class="lead">
-      <strong>CertMate Agent</strong> maps your entire certificate infrastructure to natural language and deterministic slash commands. Run a local LLM as a sidecar to your cluster. Secure by default, strictly audited, zero external dependencies.
+      How DNS-01 validation actually works, when a wildcard is worth it, what
+      CNAME delegation buys you, and why a renewal that "succeeded" can still
+      leave the old certificate being served. Written for operators, grounded in
+      <a href="https://github.com/fabriziosalmi/certmate" rel="noopener">CertMate</a>'s
+      documentation.
     </p>
 
     <div class="cta-row">
-      <a class="btn primary" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
-        View Repository ↗
+      <a class="btn primary" href="/topics/">
+        Read the explainers
       </a>
-      <a class="btn ghost" href="/topics/">
-        Documentation
+      <a class="btn ghost" href="https://www.certmate.org" rel="noopener">
+        CertMate ↗
       </a>
     </div>
 
     <p class="hero-foot subtle">
-      Designed for operators. Execute complex renewals, deploy hooks, and global cache clears via deterministic slash commands like <code>/renew example.com</code>, or query your live configuration naturally.
+      <strong>CertMate Agent</strong> also runs as a local documentation
+      assistant: an embedded LLM with retrieval over those docs, answering in
+      your terminal and citing the file it drew from. It holds no credentials
+      and never connects to a running instance — to drive a live CertMate from
+      an assistant, use the
+      <a href="https://github.com/fabriziosalmi/certmate/blob/main/docs/mcp.md" rel="noopener">MCP server</a>
+      that ships with CertMate itself, maintained where the API is maintained.
     </p>
   </section>
 
@@ -31,37 +41,39 @@ import DocsSearch from "../components/DocsSearch.astro";
 
   <section class="features">
     <div class="feature">
-      <h3>Deterministic Actions</h3>
+      <h3>Deterministic lookups</h3>
       <p class="muted">
-        Slash commands bypass the LLM entirely for critical operations. Sub-50ms latency for querying status, listing expiring certificates, or triggering specific deploy hooks.
+        <code>/docs</code> bypasses the LLM entirely and returns ranked excerpts straight from the index, each labelled with the file it came from. <code>/help</code> lists the commands, <code>/reindex</code> rebuilds the index. That is the whole surface.
       </p>
     </div>
     <div class="feature">
       <h3>Local LLM via LM Studio</h3>
       <p class="muted">
-        Zero data leaves your infrastructure. Plug in any OpenAI-compatible local model (defaulting to Gemma 4) to securely query your infrastructure and internal documentation.
+        Zero data leaves your machine. Point it at any OpenAI-compatible local model to ask questions about CertMate's documentation in your own terminal.
       </p>
     </div>
     <div class="feature">
-      <h3>Strict Access Control</h3>
+      <h3>Nothing to compromise</h3>
       <p class="muted">
-        Read tools execute inline. Write tools queue a <code>pending_action</code> requiring explicit human confirmation. Admin-only operations are gated via cryptographically secure tokens.
+        It reads documentation. It holds no CertMate credential, opens no connection to a running instance, and has no write path to anything. The API mapping it once had was removed in 0.2.0 — a second mapping of an API maintained elsewhere could only drift, and had.
       </p>
     </div>
     <div class="feature">
       <h3>Local RAG Engine</h3>
       <p class="muted">
-        Built-in document indexer chunks and embeds CertMate's documentation locally. Ask <code>/docs DNS-01 validation</code> and get precise, cited answers without hitting external APIs.
+        A built-in indexer chunks and embeds CertMate's documentation on your machine. Ask <code>/docs DNS-01 validation</code> and get ranked excerpts with their source file, without an external API call.
       </p>
     </div>
   </section>
 
   <section class="terminal-preview prose">
-    <h2>Operate at the speed of thought.</h2>
+    <h2>What it actually looks like.</h2>
     <p class="muted">
-      The web component widget drops into any administrative dashboard. It streams responses via SSE, manages conversation state locally, and gracefully handles complex data structures like JSON payloads and markdown tables.
+      Three commands, no credentials, no connection to anything but the local
+      model and the index on disk. Answers name the file they came from, so you
+      can go and read it.
     </p>
-    
+
     <div class="terminal-mockup">
       <div class="mockup-header">
         <span class="dot red"></span>
@@ -70,37 +82,29 @@ import DocsSearch from "../components/DocsSearch.astro";
         <span class="mockup-title">certmate-agent</span>
       </div>
       <div class="mockup-body">
-        <p class="user-line"><span>›</span> /expiring 14</p>
-        <p class="agent-line">System connected. 2 certificates expiring within 14 days:</p>
-        <table class="mockup-table">
-          <thead><tr><th>Domain</th><th>Expiry</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>api.production.internal</td><td>6 days</td><td class="warn">Action Required</td></tr>
-            <tr><td>cdn.example.com</td><td>12 days</td><td class="warn">Action Required</td></tr>
-          </tbody>
-        </table>
-        <p class="user-line"><span>›</span> /renew api.production.internal</p>
-        <div class="mockup-confirm">
-          <strong>Proposed Action:</strong> Renew Certificate<br/>
-          <span class="muted">Target: api.production.internal</span>
-          <div class="mockup-actions">
-            <button class="mockup-btn primary">Execute</button>
-            <button class="mockup-btn">Cancel</button>
-          </div>
-        </div>
+        <p class="user-line"><span>&#8250;</span> /docs DNS-01 validation</p>
+        <p class="agent-line">Top 3 excerpt(s) for <code>DNS-01 validation</code>:</p>
+        <p class="agent-line"><code>docs/dns-providers.md</code> <em>(DNS-01 challenge)</em> — score 0.82</p>
+        <p class="agent-line"><code>docs/guide.md</code> <em>(Creating a certificate)</em> — score 0.71</p>
+        <p class="agent-line"><code>docs/ca-providers.md</code> <em>(Wildcards)</em> — score 0.64</p>
+        <p class="user-line"><span>&#8250;</span> why does a wildcard need DNS-01?</p>
+        <p class="agent-line">Because HTTP-01 proves control of a single hostname by serving a file on it, and there is no host to serve from for <code>*.example.com</code>. DNS-01 proves control of the zone instead, which is what a wildcard actually asserts. <em>(docs/dns-providers.md)</em></p>
       </div>
     </div>
   </section>
 
   <section class="cta-bottom">
     <div class="cta-box">
-      <h2>Deploy the sidecar today.</h2>
+      <h2>Manage the certificates themselves with CertMate.</h2>
       <p class="muted">
-        Available as a standalone Python package or Docker container. Ready to integrate with your existing CertMate deployment in minutes.
+        Open source, self-hosted: issues and renews TLS certificates across 29 DNS providers, discovers the ones you did not issue, and deploys renewed certificates where they are needed. These pages explain the concepts; CertMate does the work.
       </p>
       <div class="cta-row centered">
-        <a class="btn primary" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
-          Get Started ↗
+        <a class="btn primary" href="https://www.certmate.org" rel="noopener">
+          CertMate ↗
+        </a>
+        <a class="btn ghost" href="https://github.com/fabriziosalmi/certmate-agent" rel="noopener">
+          This assistant, on GitHub
         </a>
       </div>
     </div>
