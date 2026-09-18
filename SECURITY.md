@@ -34,14 +34,15 @@ for upstream-blocked fixes) before public disclosure.
 
 - The CertMate project itself — report there at
   <https://github.com/fabriziosalmi/certmate>.
-- Misuse of `AGENT_ADMIN_TOKEN` or `CERTMATE_TOKEN` that the operator
-  pasted into a wrong place. The agent doesn't store these.
+- Misuse of `AGENT_ADMIN_TOKEN` that the operator pasted into a wrong
+  place. There is no `CERTMATE_TOKEN`: the agent holds no CertMate
+  credential and never contacts an instance.
 - Findings that require an already-compromised host (local code
   execution, root access, etc.).
-- LLM "jailbreaks" that get the model to say things it shouldn't,
-  without it also producing a write action — those are model behavior,
-  not agent behavior. Reports about a model-produced output that
-  bypassed the confirm-token flow on a write are very welcome.
+- LLM "jailbreaks" that get the model to say things it shouldn't.
+  There is no write path for a jailbreak to reach: the only tool is
+  `docs_search`, which reads a local index. Model behaviour, not agent
+  behaviour.
 
 ## What we already defend against
 

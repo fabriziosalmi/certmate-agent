@@ -72,6 +72,28 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
     <link rel="icon" type="image/png" sizes="192x192" href="/certmate-logo.png" />
     <link rel="apple-touch-icon" href="/certmate-logo.png" />
 
+    <!--
+      Structured data. These pages exist to be found by someone searching
+      "what is DNS-01" or "wildcard certificate" at the moment they have the
+      problem, so the site should tell a crawler what it is rather than leaving
+      it to infer. WebSite carries the search action; the publisher link is what
+      ties this satellite back to CertMate itself.
+    -->
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "CertMate Agent",
+      "url": Astro.site?.toString(),
+      "description": description,
+      "inLanguage": "en",
+      "publisher": {
+        "@type": "Organization",
+        "name": "CertMate",
+        "url": "https://www.certmate.org",
+        "sameAs": ["https://github.com/fabriziosalmi/certmate"]
+      }
+    }).replace(/</g, "\\u003c")} />
+
     <slot name="head" />
   </head>
   <body>

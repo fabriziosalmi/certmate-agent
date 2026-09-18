@@ -6,7 +6,7 @@ Adds a small, consistent set of headers to every response:
   be embedded in the CertMate dashboard and possibly the public landing
   on agent.certmate.org. We allow exactly those origins (taken from
   ``AGENT_CORS_ORIGINS``) and nothing else. Defense against click-jacking
-  on /tools/execute confirms loaded inside a hostile third-party iframe.
+  on the chat widget loaded inside a hostile third-party iframe.
 - ``X-Frame-Options`` — legacy companion to frame-ancestors for browsers
   that don't honor CSP (very few left, but cheap). When the allowlist is
   empty we lock to ``DENY``; when it has entries we use ``SAMEORIGIN``

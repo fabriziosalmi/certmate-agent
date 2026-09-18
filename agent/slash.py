@@ -3,10 +3,6 @@
 Commands bypass the LLM entirely: parse argv -> dispatch tool -> format
 result with a Python formatter. Sub-200ms for the frequent queries.
 
-Write commands ('/renew', '/deploy', etc.) reuse the same pending_action
-flow as LLM-emitted tool calls — they don't execute directly; the widget
-must POST /tools/execute with the issued token.
-
 Each handler is an async generator yielding the same event dicts as the
 LLM chat loop (see chat_loop.py), so the widget renders them identically.
 """
