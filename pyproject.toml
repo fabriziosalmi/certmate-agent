@@ -15,7 +15,11 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
-    "ruff>=0.7",
+    # Tetto su 0.16: ruff 0.16 ha allargato le regole di default e segnala 43
+    # errori su codice che con 0.15 era pulito (15 dei quali BLE001, gestione
+    # delle eccezioni). Adottare quelle regole e' una revisione del codice da
+    # fare apposta, non un effetto collaterale di un pip install.
+    "ruff>=0.7,<0.16",
 ]
 
 [build-system]
