@@ -89,11 +89,11 @@ curl -X PUT http://localhost:8000/api/dns/cloudflare/accounts/staging \\
   -H "Content-Type: application/json" \\
   -d '{ "credentials": { "api_token": "new-token-here" } }'
 
-# Set staging as the default for Cloudflare
-curl -X POST http://localhost:8000/api/dns/cloudflare/default \\
+# Set staging as the default for Cloudflare — same PUT, with the flag
+curl -X PUT http://localhost:8000/api/dns/cloudflare/accounts/staging \\
   -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{ "account_id": "staging" }'
+  -d '{ "set_as_default": true }'
 
 # Delete an account
 curl -X DELETE http://localhost:8000/api/dns/cloudflare/accounts/staging \\

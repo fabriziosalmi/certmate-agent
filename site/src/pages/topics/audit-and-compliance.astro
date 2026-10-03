@@ -56,10 +56,12 @@ import Topic from "../../layouts/Topic.astro";
 
 <ul>
   <li>
-    <code>user</code> resolves the API token to a human identity. The
-    token's <code>created_by</code> field carries the email of the
-    operator who minted it; CertMate joins that in at log-write time
-    so the audit row is human-readable without a lookup.
+    <code>user</code> is written verbatim by the caller &mdash;
+    <code>user or 'system'</code>. For an API key it is
+    <code>api_key:&lt;name&gt;</code>, for a session it is the username. There is
+    no join and no email: the key's <code>created_by</code> records which admin
+    minted it, and stays on the key record rather than being copied onto every
+    audit row.
   </li>
   <li>
     <code>ip_address</code> is the source IP of the HTTP request — or
@@ -97,45 +99,52 @@ import Topic from "../../layouts/Topic.astro";
     <tr><td><code>certificate_downloaded</code></td><td>Anyone fetched the cert / key over the API.</td></tr>
     <tr><td><code>batch_operation</code></td><td>Bulk issue/renew/revoke kicked off.</td></tr>
     <tr><td><code>api_request</code></td><td>Non-state-changing API calls (optional, configurable).</td></tr>
-    <tr><td><code>deploy_hook_fired</code></td><td>A hook was invoked + exit code + stdout/stderr (truncated).</td></tr>
-    <tr><td><code>config_change</code></td><td>Settings, DNS accounts, deploy hook configs.</td></tr>
-    <tr><td><code>auth_failure</code></td><td>Invalid token, scope rejection, rate limit hit.</td></tr>
+    <tr><td><code>deploy_hook_changed</code></td><td>A hook was created, edited or removed. Note: hook <em>invocation</em> is not audited &mdash; the run and its output land in the deploy history, not the chain.</td></tr>
+    <tr><td><code>settings_changed</code></td><td>Settings and DNS accounts. CA changes are <code>ca_provider_changed</code>.</td></tr>
+    <tr><td><code>authz_denied</code></td><td>A request rejected on role or domain scope.</td></tr>
   </tbody>
 </table>
 
 <p>
-  The full method list lives in
-  <code>modules/core/audit_logger.py</code>. The non-obvious one is
-  <code>auth_failure</code>: every rejected request (bad bearer token,
-  out-of-scope domain on a scoped key) writes an audit row with the
-  IP and the attempted resource. This is what you grep when an
-  auditor asks "show me the unauthorized access attempts."
+  The full method list lives in <code>modules/core/audit.py</code> &mdash;
+  eighteen <code>log_*</code> methods, from <code>log_certificate_created</code>
+  to <code>log_authz_denied</code>. The non-obvious one is
+  <code>log_authz_denied</code>: a request rejected on role or domain scope
+  writes an audit row with the attempted resource. That is what you grep when
+  an auditor asks &ldquo;show me the unauthorized access attempts&rdquo;.
 </p>
 
 <h2>Queryable patterns</h2>
 
 <p>
-  CertMate exposes the audit log via REST{" "}
-  (<code>GET /api/audit</code> with filters on operation, resource,
-  user, status, time range) plus a UI timeline view per certificate.
-  The patterns auditors actually ask for:
+  There is no filtered query endpoint. <code>GET /api/web/audit-logs</code>
+  (admin) returns the most recent entries and takes one parameter,
+  <code>limit</code>, capped at 1000 — you filter client-side.
+  <code>GET /api/audit/export</code> (admin) returns the signed, independently
+  verifiable bundle, optionally sliced by <code>from_seq</code> /
+  <code>to_seq</code>. The patterns auditors actually ask for, answered against
+  what exists:
 </p>
 
 <h3>"Who renewed cert X in the last 90 days?"</h3>
 
-<pre><code>{`curl -G http://localhost:8000/api/audit \\
+<pre><code>{`curl -G http://localhost:8000/api/web/audit-logs \\
   -H "Authorization: Bearer $TOKEN" \\
-  --data-urlencode "operation=renew" \\
-  --data-urlencode "resource_id=example.com" \\
-  --data-urlencode "since=$(date -u -v-90d +%Y-%m-%d)"`}</code></pre>
+  --data-urlencode "limit=1000" \\
+  | jq '[.[] | select(.operation == "renew"
+        and .resource_id == "example.com")]'`}</code></pre>
 
 <h3>"Show me every failed renewal in the last week"</h3>
 
-<pre><code>{`curl -G http://localhost:8000/api/audit \\
+<pre><code>{`curl -G http://localhost:8000/api/web/audit-logs \\
   -H "Authorization: Bearer $TOKEN" \\
-  --data-urlencode "operation=renew" \\
-  --data-urlencode "status=error" \\
-  --data-urlencode "since=$(date -u -v-7d +%Y-%m-%d)"`}</code></pre>
+  --data-urlencode "limit=1000" \\
+  | jq '[.[] | select(.operation == "renew" and .status == "error")]'`}</code></pre>
+
+<p>
+  If a thousand entries is not enough reach for the window you need, take the
+  export bundle instead — it is the whole chain, and it verifies off the box.
+</p>
 
 <h3>"Who has access to issue against *.example.com?"</h3>
 
@@ -144,22 +153,29 @@ import Topic from "../../layouts/Topic.astro";
   question. The answer comes from the API key registry:
 </p>
 
-<pre><code>{`curl http://localhost:8000/api/auth/keys \\
+<pre><code>{`curl http://localhost:8000/api/keys \\
   -H "Authorization: Bearer $TOKEN" \\
-  | jq '.[] | select(
+  | jq '.keys[] | select(
         .role == "operator" and
-        (.allowed_domains // []) | any(. as $d | "example.com" | inside($d))
+        ((.allowed_domains // []) | any(. as $d | "example.com" | inside($d)))
       )'`}</code></pre>
+
+<p>
+  The route is <code>/api/keys</code> — <code>/api/auth/*</code> is the OIDC
+  surface — and it answers with <code>&#123;"keys": [...]&#125;</code>, so the
+  filter walks <code>.keys[]</code> rather than the top level.
+</p>
 
 <h2>Retention and export</h2>
 
 <p>
-  CertMate keeps audit entries in the local sqlite store with a
-  configurable retention window. The default is "forever" — auditors
-  appreciate this, your disk doesn't, so set
-  <code>AUDIT_RETENTION_DAYS</code> based on your compliance
-  requirement (90 days for general operations, 365+ for regulated
-  workloads).
+  The audit trail is a line-delimited JSON file, not a database, and it is
+  bounded by size rather than by age. A rotating handler keeps
+  <code>CERTMATE_AUDIT_LOG_MAX_BYTES</code> per file (10 MB by default) across
+  <code>CERTMATE_AUDIT_LOG_BACKUP_COUNT</code> files (5), so roughly 60 MB
+  before the oldest entries fall off the end. There is no retention-in-days
+  setting: if your compliance requirement is expressed in time rather than
+  bytes, ship the entries somewhere that keeps them.
 </p>
 
 <p>
@@ -171,11 +187,10 @@ import Topic from "../../layouts/Topic.astro";
 tail -f /app/logs/audit/certificate_audit.log | \\
   vector --config /etc/vector/certmate.toml
 
-# Or pull via API, paginated
-curl -G http://localhost:8000/api/audit \\
+# Or pull the signed bundle, sliced since your last run
+curl -G http://localhost:8000/api/audit/export \\
   -H "Authorization: Bearer $TOKEN" \\
-  --data-urlencode "since=$LAST_RUN" \\
-  --data-urlencode "limit=1000"`}</code></pre>
+  --data-urlencode "from_seq=$LAST_SEQ"`}</code></pre>
 
 <p>
   The on-disk format is line-delimited JSON — every line is one entry
@@ -218,10 +233,12 @@ curl -G http://localhost:8000/api/audit \\
 
 <ol>
   <li>
-    Set <code>AUDIT_RETENTION_DAYS</code> to your compliance
-    requirement, set <code>API_BEARER_TOKEN</code> to a long random
-    value, set up at least one operator-role API key per human who
-    needs CertMate access (don't share the admin token).
+    Size the rotation for the window you need
+    (<code>CERTMATE_AUDIT_LOG_MAX_BYTES</code> x
+    <code>CERTMATE_AUDIT_LOG_BACKUP_COUNT</code>), set
+    <code>API_BEARER_TOKEN</code> to a long random value, and set up at
+    least one operator-role API key per human who needs CertMate access
+    (don't share the admin token).
   </li>
   <li>
     Ship the audit log to your SIEM with a real-time tail (Vector,

@@ -32,7 +32,12 @@ class CertMateAgent extends HTMLElement {
     this.sessionKey = this.getAttribute("session-key") || "certmate-agent:" + (new URL(this.endpoint).host);
     this.sessionId = this.persist ? this._loadOrCreateSession() : null;
     this.sessionToken = this.persist ? localStorage.getItem(this.sessionKey + ":token") || null : null;
-    this.serverMode = "full";
+    // Default to what this agent actually is. _discoverMode() asks the
+    // server (which reports mode: "docs_only") and would correct a wrong
+    // default — but only if that fetch succeeds. Defaulting to "full"
+    // meant a failed discovery left the widget advertising commands that
+    // do not exist.
+    this.serverMode = "docs_only";
     this._render();
     this._addHint();
     if (this.persist) await this._restoreHistory();
@@ -49,13 +54,11 @@ class CertMateAgent extends HTMLElement {
       this._clearStatus();
       if (!r.ok) return;
       const data = await r.json();
-      let msg = "System connected. Initialization complete.\\n\\n";
-      if (data.certs_expiring_30d !== undefined && data.certs_expiring_30d > 0) {
-        msg += `Action Required: ${data.certs_expiring_30d} certificate(s) expiring within 30 days.\\nRun \`/expiring\` for details or \`/renew <domain>\` to rotate.`;
-      } else if (data.certs_total !== undefined) {
-        msg += `System Healthy: ${data.certs_total} certificates up to date.\\nRun \`/\` to view available commands.`;
-      } else {
-        msg += `System Healthy.\\nRun \`/\` to view available commands.`;
+      // No certificate counts here: /health reports on the agent itself
+      // (index, local model) and knows nothing about any CertMate instance.
+      let msg = "Docs assistant ready.\\n\\n";
+      {
+        msg += `Run \`/\` to view available commands, or \`/docs <query>\` to search the CertMate documentation.`;
       }
       this._addAssistant(msg);
       this._history.push({ role: "assistant", content: msg });
