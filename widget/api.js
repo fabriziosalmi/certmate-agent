@@ -20,7 +20,7 @@ export function parseSseBlock(block, callbacks) {
         callbacks.setSessionToken(data.token);
         try {
           localStorage.setItem(callbacks.getSessionKey() + ":token", data.token);
-        } catch {}
+        } catch { /* localStorage throws in private browsing; the token stays in memory */ }
       }
     } else if (event === "token") {
       callbacks.clearStatus();

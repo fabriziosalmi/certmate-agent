@@ -54,13 +54,26 @@
       return;
     }
 
-    resultsEl.innerHTML = results.slice(0, 5).map(res => `
-      <div class="search-hit">
-        <div class="hit-title">${res.title || 'Documentation'} <span class="hit-source">${res.source}</span></div>
-        <div class="hit-question">${res.q_en}</div>
-        <div class="hit-answer">${res.a_en}</div>
-      </div>
-    `).join('');
+    const div = (cls: string, text: string) => {
+      const el = document.createElement('div');
+      el.className = cls;
+      el.textContent = text;
+      return el;
+    };
+
+    resultsEl.replaceChildren(...results.slice(0, 5).map(res => {
+      const hit = document.createElement('div');
+      hit.className = 'search-hit';
+
+      const title = div('hit-title', res.title || 'Documentation');
+      const source = document.createElement('span');
+      source.className = 'hit-source';
+      source.textContent = res.source;
+      title.append(' ', source);
+
+      hit.append(title, div('hit-question', res.q_en), div('hit-answer', res.a_en));
+      return hit;
+    }));
     
     resultsEl.classList.remove('hidden');
   }

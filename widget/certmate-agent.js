@@ -76,7 +76,7 @@ class CertMateAgent extends HTMLElement {
         this.serverMode = body.mode;
         this._applyMode();
       }
-    } catch {}
+    } catch { /* the mode poll is best effort; a failure keeps the mode we already have */ }
   }
 
   _applyMode() {
@@ -154,11 +154,11 @@ class CertMateAgent extends HTMLElement {
         `${this.endpoint}/conversations/${encodeURIComponent(this.sessionId)}`,
         { method: "DELETE", headers },
       );
-    } catch {}
+    } catch { /* teardown is fire and forget: the server expires the conversation anyway */ }
     try {
       localStorage.removeItem(this.sessionKey);
       localStorage.removeItem(this.sessionKey + ":token");
-    } catch {}
+    } catch { /* localStorage throws in private browsing and when site data is blocked */ }
     this.sessionId = this._loadOrCreateSession();
     this.sessionToken = null;
     this._history = [];
@@ -171,6 +171,7 @@ class CertMateAgent extends HTMLElement {
   }
 
   _render() {
+    // slopless-disable-next-line VBC-070 -- widgetTemplate is a constant imported from ./template.js
     this._shadow.innerHTML = widgetTemplate;
     this._logEl = this._shadow.getElementById("log");
     this._inputEl = this._shadow.getElementById("input");
@@ -228,6 +229,7 @@ class CertMateAgent extends HTMLElement {
       this._hideComplete();
       return;
     }
+    // slopless-disable-next-line VBC-070 -- names come from the static _slashCommands() list, not from input
     this._completeEl.innerHTML = matches
       .map(
         ([name, desc], i) => `
@@ -369,6 +371,7 @@ class CertMateAgent extends HTMLElement {
   _addAssistant(text) {
     const el = document.createElement("div");
     el.className = "msg assistant md";
+    // slopless-disable-next-line VBC-070 -- _md escapes the source before rendering it as markdown
     el.innerHTML = this._prettify(this._md(text));
     this._logEl.appendChild(el);
     this._enhanceAssistantMessage(el);
@@ -441,6 +444,7 @@ class CertMateAgent extends HTMLElement {
     const glyph = result === undefined
       ? `<span class="glyph spin" aria-hidden="true"></span>`
       : `<span class="glyph" aria-hidden="true">${ok ? "→" : "×"}</span>`;
+    // slopless-disable-next-line VBC-070 -- name and args go through _escape; glyph is a constant
     el.innerHTML = `
       <div>
         ${glyph}
@@ -584,6 +588,7 @@ class CertMateAgent extends HTMLElement {
       const text = finalText || this._streamingText;
       this._streamingEl.classList.remove("streaming");
       // innerHTML replaces both the text node and the cursor span.
+      // slopless-disable-next-line VBC-070 -- _md escapes the source before rendering it as markdown
       this._streamingEl.innerHTML = this._prettify(this._md(text));
       this._enhanceAssistantMessage(this._streamingEl);
       this._streamingEl = null;
