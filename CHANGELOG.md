@@ -8,6 +8,24 @@ The image at `ghcr.io/fabriziosalmi/certmate-agent:<tag>` is signed
 with cosign (keyless) and ships SLSA L3 build provenance. Verification
 recipe in the README.
 
+## [0.2.1] — 2026-10-03
+
+### Changed
+
+- **`docs_search` says what to do when nothing matches.** An empty result used
+  to carry no instruction, leaving the model to decide alone whether to answer
+  from memory. The result now says the docs do not cover the query, and the
+  system prompt has the matching rule. It only fires when no chunk reaches the
+  score floor (0.15), which in measurement is almost never for an on-topic
+  question: a score floor does not separate unanswerable questions (best score
+  0.40–0.66) from answerable ones (0.48–0.80).
+
+### Added
+
+- `RagStore.rank()`: unfiltered top-k; `search()` is `rank()` above the floor.
+- `tests/eval`: 58 hand-written retrieval questions and a script reporting
+  hit@k and MRR (hit@3 0.959, MRR 0.825 on 49 answerable questions).
+
 ## [0.2.0] — 2026-07-21
 
 The agent stops being a second mapping of CertMate's API.
