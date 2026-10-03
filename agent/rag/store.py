@@ -196,6 +196,10 @@ class RagStore:
         return self.load()
 
     def search(self, query_embedding: list[float], k: int = 3) -> list[SearchHit]:
+        return [h for h in self.rank(query_embedding, k) if h.score >= _MIN_SCORE]
+
+    def rank(self, query_embedding: list[float], k: int = 3) -> list[SearchHit]:
+        """Top-k chunks by cosine similarity, with no score floor applied."""
         if not self._index or not query_embedding or not self._unit_chunks:
             return []
         # Take a local snapshot so a concurrent reload() can't swap the
@@ -210,14 +214,10 @@ class RagStore:
             (_dot(unit_q, uc), c) for uc, c in zip(unit_chunks, chunks)
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
-        out: list[SearchHit] = []
-        for score, c in scored[:k]:
-            if score < _MIN_SCORE:
-                break  # sorted; everything after this is also under the floor
-            out.append(SearchHit(
-                text=c.text, title=c.title, source=c.source, url=c.url, score=score,
-            ))
-        return out
+        return [
+            SearchHit(text=c.text, title=c.title, source=c.source, url=c.url, score=score)
+            for score, c in scored[:k]
+        ]
 
 
 _store: RagStore | None = None
