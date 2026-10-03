@@ -53,6 +53,19 @@ class Tool:
         }
 
 
+_NO_HITS_NOTE = (
+    "No relevant documentation was found for this query. Tell the user the "
+    "docs do not cover it. Do not answer from memory and do not cite a file."
+)
+
+
+def _docs_result(hits: list[dict[str, Any]], cached: bool) -> dict[str, Any]:
+    out: dict[str, Any] = {"ready": True, "hits": hits, "cached": cached}
+    if not hits:
+        out["note"] = _NO_HITS_NOTE
+    return out
+
+
 async def _docs_search(args: dict[str, Any]) -> Any:
     """RAG over CertMate docs.
 
@@ -77,7 +90,7 @@ async def _docs_search(args: dict[str, Any]) -> Any:
     cache = get_cache()
     cached = cache.get(query, k)
     if cached is not None:
-        return {"ready": True, "hits": cached, "cached": True}
+        return _docs_result(cached, True)
 
     # Shared embed client (process singleton). Reuses the httpx connection
     # pool across queries — saves the TLS handshake on every docs_search call.
@@ -95,7 +108,7 @@ async def _docs_search(args: dict[str, Any]) -> Any:
         for h in hits
     ]
     cache.put(query, k, payload)
-    return {"ready": True, "hits": payload, "cached": False}
+    return _docs_result(payload, False)
 
 
 def _build_registry() -> dict[str, Tool]:

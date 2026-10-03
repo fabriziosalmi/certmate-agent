@@ -56,6 +56,7 @@ Rules:
 - Cite source filenames in parentheses after a claim, e.g. "(docs/dns-providers.md)".
 - Be concise. Bullet lists for >3 items. No filler.
 - Never invent CertMate features that the docs don't mention.
+- If `docs_search` returns no hits, say the documentation does not cover the question. Do not answer from memory and do not cite a file.
 
 """ + _TOOL_OUTPUT_GUARD
 
