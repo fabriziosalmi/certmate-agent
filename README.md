@@ -7,8 +7,12 @@ Documentation assistant for [CertMate](https://www.certmate.org)
 
 Embedded local LLM (LM Studio by default) + retrieval over CertMate's
 documentation. Ask how a feature works, how to configure a DNS provider, what
-DNS-01 or a deploy hook actually does — answers are grounded in the docs and
-cite the file they came from.
+DNS-01 or a deploy hook actually does.
+
+Unlike a generic chat, it is instructed to search the CertMate documentation
+before answering and to cite the file each claim came from. That is a prompt
+rule, not a guarantee: nothing yet checks that an answer stays inside the
+retrieved text, or that the agent declines when retrieval finds nothing.
 
 **It does not connect to a running CertMate instance and holds no
 credentials.** For driving a live instance from an assistant, CertMate ships
