@@ -1,0 +1,549 @@
+{
+ "index_repo": "fabriziosalmi/certmate",
+ "items": [
+  {
+   "question": "How do I upgrade CertMate when it runs under Docker Compose?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q01",
+   "anchors": {
+    "docs/docker.md": "docker compose pull"
+   }
+  },
+  {
+   "question": "If I recreate the container, do I lose my certificates and settings?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q02",
+   "anchors": {
+    "docs/docker.md": "keeps all persistent state in the mounted volumes"
+   }
+  },
+  {
+   "question": "Should I use the latest tag in production?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q03",
+   "anchors": {
+    "docs/docker.md": "instead of `:latest`"
+   }
+  },
+  {
+   "question": "Which certificate authorities need External Account Binding?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q04",
+   "anchors": {
+    "docs/ca-providers.md": "require External Account Binding"
+   }
+  },
+  {
+   "question": "Where do I get EAB credentials for ZeroSSL?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q05",
+   "anchors": {
+    "docs/ca-providers.md": "ZeroSSL Developer Dashboard"
+   }
+  },
+  {
+   "question": "What is the default API rate limit per minute?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q06",
+   "anchors": {
+    "docs/api.md": "General\\s+\\|\\s+100"
+   }
+  },
+  {
+   "question": "Are API rate limits counted per IP or per API key?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q07",
+   "anchors": {
+    "docs/api.md": "per API key"
+   }
+  },
+  {
+   "question": "Can an admin change the API rate limits without restarting?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q08",
+   "anchors": {
+    "docs/api.md": "API Rate Limits"
+   }
+  },
+  {
+   "question": "How do I install the command line client?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q09",
+   "anchors": {
+    "README.md": "pip install certmate-cli"
+   }
+  },
+  {
+   "question": "How many tools does the MCP server expose?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q10",
+   "anchors": {
+    "README.md": "exposes \\*\\*16 tools\\*\\*"
+   }
+  },
+  {
+   "question": "What kind of API key should I give an AI agent using the MCP server?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q11",
+   "anchors": {
+    "README.md": "is_agent: true"
+   }
+  },
+  {
+   "question": "How do I configure SSO with Keycloak?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q12",
+   "anchors": {
+    "README.md": "realms/main"
+   }
+  },
+  {
+   "question": "Which redirect URI do I register in my identity provider for OIDC?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q13",
+   "anchors": {
+    "README.md": "/api/auth/oidc/callback"
+   }
+  },
+  {
+   "question": "If someone is removed from the admin group in the IdP, do they lose admin in CertMate?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q14",
+   "anchors": {
+    "README.md": "sync_role_on_login"
+   }
+  },
+  {
+   "question": "Which DNS providers does CertMate support?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q15",
+   "anchors": {
+    "docs/dns-providers.md": "Hetzner Cloud",
+    "README.md": "## Supported DNS Providers"
+   }
+  },
+  {
+   "question": "Does CertMate support deSEC?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q16",
+   "anchors": {
+    "docs/dns-providers.md": "deSEC",
+    "README.md": "\\*\\*deSEC\\*\\*"
+   }
+  },
+  {
+   "question": "How do I delegate DNS validation to another domain with a CNAME?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q17",
+   "anchors": {
+    "docs/dns-providers.md": "domain_alias"
+   }
+  },
+  {
+   "question": "What CNAME record do I add for domain alias validation?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q18",
+   "anchors": {
+    "docs/dns-providers.md": "_acme-challenge\\.example\\.com\\. 300 IN CNAME"
+   }
+  },
+  {
+   "question": "Can I issue a wildcard certificate using a validation domain alias?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q19",
+   "anchors": {
+    "docs/dns-providers.md": "Wildcard Certificates with Domain Alias"
+   }
+  },
+  {
+   "question": "Which DNS provider credentials can be read from environment variables?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q20",
+   "anchors": {
+    "docs/installation.md": "Cloudflare is the only provider read from the environment"
+   }
+  },
+  {
+   "question": "I put AWS_ACCESS_KEY_ID in my .env but Route53 does not work, why?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q21",
+   "anchors": {
+    "docs/installation.md": "AWS_\\*, AZURE_\\*"
+   }
+  },
+  {
+   "question": "How do I install CertMate on a Linux server without Docker?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q22",
+   "anchors": {
+    "docs/installation.md": "deploy/install\\.sh"
+   }
+  },
+  {
+   "question": "How do I make the systemd install listen on all interfaces?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q23",
+   "anchors": {
+    "docs/installation.md": "CERTMATE_BIND"
+   }
+  },
+  {
+   "question": "How do I read the logs of the CertMate service?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q24",
+   "anchors": {
+    "docs/installation.md": "journalctl -u certmate",
+    "README.md": "journalctl -u certmate"
+   }
+  },
+  {
+   "question": "What is the default timeout of a deploy hook?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q25",
+   "anchors": {
+    "docs/deploy-hooks.md": "Default 30"
+   }
+  },
+  {
+   "question": "Which environment variables does a deploy hook receive?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q26",
+   "anchors": {
+    "docs/deploy-hooks.md": "CERTMATE_CERT_PATH"
+   }
+  },
+  {
+   "question": "How do I run a deploy hook only during a maintenance window?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q27",
+   "anchors": {
+    "docs/deploy-hooks.md": "\"window\": \\{"
+   }
+  },
+  {
+   "question": "What happens to a deploy when the certificate renews while the window is closed?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q28",
+   "anchors": {
+    "docs/deploy-hooks.md": "held until the next time the window is open"
+   }
+  },
+  {
+   "question": "How can I see which deploys are waiting for a window?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q29",
+   "anchors": {
+    "docs/deploy-hooks.md": "/api/deploy/pending"
+   }
+  },
+  {
+   "question": "Which events can trigger a deploy hook?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q30",
+   "anchors": {
+    "docs/deploy-hooks.md": "on_events"
+   }
+  },
+  {
+   "question": "What test coverage does CI require?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q31",
+   "anchors": {
+    "docs/testing.md": "floor of \\*\\*75%\\*\\*"
+   }
+  },
+  {
+   "question": "What do the test exit codes mean?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q32",
+   "anchors": {
+    "docs/testing.md": "Some tests failed"
+   }
+  },
+  {
+   "question": "Does CertMate need a database?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q33",
+   "anchors": {
+    "docs/architecture.md": "No DB"
+   }
+  },
+  {
+   "question": "What are the main limitations of CertMate?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q34",
+   "anchors": {
+    "docs/architecture.md": "Certbot-only for server certs"
+   }
+  },
+  {
+   "question": "Can CertMate issue certificates with the HTTP-01 challenge?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q35",
+   "anchors": {
+    "docs/architecture.md": "DNS-01 ACME challenges only"
+   }
+  },
+  {
+   "question": "What is CertMate built with?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q36",
+   "anchors": {
+    "docs/architecture.md": "Flask-RESTX"
+   }
+  },
+  {
+   "question": "How do I scrape CertMate metrics with Prometheus?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q37",
+   "anchors": {
+    "README.md": "viewer-scoped API token"
+   }
+  },
+  {
+   "question": "Is there a health check endpoint?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q38",
+   "anchors": {
+    "README.md": "curl -f http://localhost:8000/health",
+    "docs/api.md": "GET /api/health"
+   }
+  },
+  {
+   "question": "How long do automatic backups stay on the host?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q39",
+   "anchors": {
+    "README.md": "pruned after 30 days"
+   }
+  },
+  {
+   "question": "What do I set when CertMate runs behind a reverse proxy?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q40",
+   "anchors": {
+    "README.md": "BEHIND_PROXY=true",
+    "docs/installation.md": "BEHIND_PROXY=true"
+   }
+  },
+  {
+   "question": "How do I authenticate API requests?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q41",
+   "anchors": {
+    "docs/api.md": "Authorization: Bearer",
+    "README.md": "Authorization: Bearer"
+   }
+  },
+  {
+   "question": "How do I generate the secrets for the Docker quick start?",
+   "kind": "answerable",
+   "lang": "en",
+   "id": "q42",
+   "anchors": {
+    "README.md": "openssl rand -hex 32"
+   }
+  },
+  {
+   "question": "Come aggiorno CertMate con Docker?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q43",
+   "anchors": {
+    "docs/docker.md": "docker compose pull"
+   }
+  },
+  {
+   "question": "Quali provider DNS sono supportati?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q44",
+   "anchors": {
+    "docs/dns-providers.md": "Hetzner Cloud",
+    "README.md": "## Supported DNS Providers"
+   }
+  },
+  {
+   "question": "Come configuro il single sign-on con Keycloak?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q45",
+   "anchors": {
+    "README.md": "realms/main"
+   }
+  },
+  {
+   "question": "Posso ritardare il deploy a una finestra di manutenzione?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q46",
+   "anchors": {
+    "docs/deploy-hooks.md": "\"window\": \\{"
+   }
+  },
+  {
+   "question": "Come installo la CLI di CertMate?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q47",
+   "anchors": {
+    "README.md": "pip install certmate-cli"
+   }
+  },
+  {
+   "question": "CertMate usa un database?",
+   "kind": "answerable",
+   "lang": "it",
+   "id": "q48",
+   "anchors": {
+    "docs/architecture.md": "No DB"
+   }
+  },
+  {
+   "id": "q49",
+   "question": "Is there an official Helm chart for Kubernetes?",
+   "kind": "answerable",
+   "lang": "en",
+   "anchors": {
+    "README.md": "helm install certmate oci://ghcr\\.io"
+   }
+  },
+  {
+   "question": "How much does CertMate Enterprise cost?",
+   "kind": "no_answer",
+   "absent": [
+    "\\bpricing\\b",
+    "per month",
+    "\\$\\d"
+   ],
+   "note": "Commercial support is mentioned, prices are not",
+   "lang": "en",
+   "id": "q50"
+  },
+  {
+   "question": "Does CertMate have a Windows installer?",
+   "kind": "no_answer",
+   "absent": [
+    "Windows (installer|service|server)",
+    "\\.msi\\b"
+   ],
+   "note": "Windows appears only in venv activation hints, not as a supported platform",
+   "lang": "en",
+   "id": "q51"
+  },
+  {
+   "question": "Can CertMate send SMS alerts when a certificate is about to expire?",
+   "kind": "no_answer",
+   "absent": [
+    "\\bSMS\\b"
+   ],
+   "note": "near miss: notifications exist",
+   "lang": "en",
+   "id": "q52"
+  },
+  {
+   "question": "How do I configure LDAP login?",
+   "kind": "no_answer",
+   "absent": [
+    "LDAP (login|bind|directory|auth(entication)? for (users|login))"
+   ],
+   "note": "near miss: LDAP appears only as a Vault auth method; OIDC/SSO is the user login path",
+   "lang": "en",
+   "id": "q53"
+  },
+  {
+   "question": "Does CertMate support OCSP stapling for server certificates?",
+   "kind": "no_answer",
+   "absent": [
+    "stapling"
+   ],
+   "note": "near miss: OCSP endpoints exist for client certs",
+   "lang": "en",
+   "id": "q54"
+  },
+  {
+   "question": "How do I reset the administrator password?",
+   "kind": "no_answer",
+   "absent": [
+    "reset (the |your )?(admin|password)",
+    "forgot(ten)? (the )?(admin|password)"
+   ],
+   "note": "near miss: only a lost API token is documented",
+   "lang": "en",
+   "id": "q55"
+  },
+  {
+   "question": "What is the capital of France?",
+   "kind": "no_answer",
+   "absent": [
+    "\\bParis\\b"
+   ],
+   "note": "off topic",
+   "lang": "en",
+   "id": "q56"
+  },
+  {
+   "question": "Which GPU do I need to run CertMate?",
+   "kind": "no_answer",
+   "absent": [
+    "\\bGPU\\b"
+   ],
+   "note": "nonsense for this product",
+   "lang": "en",
+   "id": "q57"
+  },
+  {
+   "question": "How do I migrate from certbot cron jobs to CertMate?",
+   "kind": "no_answer",
+   "absent": [
+    "cron job",
+    "migrat\\w+ from certbot"
+   ],
+   "note": "near miss: CA migration section exists",
+   "lang": "en",
+   "id": "q58"
+  }
+ ],
+ "docs_commit_note": "anchors verified against fabriziosalmi/certmate main fetched 2026-10-03"
+}
