@@ -41,7 +41,10 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
 
       connect-src 'self' covers the two things that reach the network: Astro's
       prefetch script and the docs search, which fetches /brutal_qa_cache.json.
-      Both are same-origin. The stylesheets contain no url() and no @import.
+      Both are same-origin. The one exception, in script-src and connect-src,
+      is https://umami.edge99.net: the publisher's own Umami instance, which
+      serves the page-view counter /s.js and receives its beacon (described on
+      /privacy). The stylesheets contain no url() and no @import.
 
       frame-ancestors is absent because it is ignored in a <meta> policy;
       framing is already denied by the X-Frame-Options: SAMEORIGIN response
@@ -49,8 +52,15 @@ const ogUrl = new URL(ogImage, Astro.site).toString();
     */}
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' https://umami.edge99.net; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self' https://umami.edge99.net; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'"
     />
+    <script
+      is:inline
+      defer
+      src="https://umami.edge99.net/s.js"
+      data-website-id="98cae292-a21c-4ef9-996b-828c4d1831ef"
+      data-domains="agent.certmate.org"
+    ></script>
 
     <link rel="canonical" href={canonicalUrl} />
 
