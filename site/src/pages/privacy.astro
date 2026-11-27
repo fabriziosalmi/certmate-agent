@@ -1,18 +1,20 @@
 ---
 import Base from "../layouts/Base.astro";
 
-// Privacy & legal notice for agent.certmate.org — a static marketing page
+// Privacy & legal notice for agent.certmate.org, a static marketing page
 // for the (self-hosted, zero-telemetry) CertMate Agent. Served directly by
-// GitHub Pages — Cloudflare is the domain's DNS only, it does not proxy it.
+// GitHub Pages; Cloudflare is the domain's DNS only, it does not proxy it.
+// Cookieless page-view counts go to the publisher's own Umami instance,
+// which is reached through Cloudflare.
 const title = "Privacy & legal — CertMate Agent";
 const description =
-  "How agent.certmate.org handles data: no cookies, no analytics, no tracking. Data controller, processors and your GDPR rights.";
+  "How agent.certmate.org handles data: no cookies, visit counts on a self-hosted Umami. Data controller, processors and your GDPR rights.";
 ---
 
 <Base title={title} description={description}>
   <section class="wrap legal">
     <h1>Privacy &amp; legal notice</h1>
-    <p class="upd">Last updated: 20 July 2026 · agent.certmate.org</p>
+    <p class="upd">Last updated: 27 November 2026 · agent.certmate.org</p>
 
     <p class="lang">English</p>
     <h2>Data controller</h2>
@@ -20,15 +22,17 @@ const description =
     <h2>What we process, and why</h2>
     <ul>
       <li><strong>Your IP and basic request data</strong> are processed transiently by our infrastructure providers to deliver the page and protect it. Legal basis: legitimate interest (Art. 6(1)(f) GDPR). We do not store this data.</li>
-      <li><strong>No analytics</strong>, no tracking pixels, no advertising. (The CertMate Agent software itself is self-hosted and ships zero telemetry.)</li>
+      <li><strong>Page-view statistics</strong> with Umami, an open-source tool, on an instance run by the publisher at <code>umami.edge99.net</code>: no analytics company receives the data. For each page view the script sends the page address (including any query string, such as UTM tags), page title, referring page, browser, operating system, device type, screen size and browser language. From your IP address the server derives the country, region and city, and a session identifier computed with a one-way hash. <strong>The IP address itself is not stored.</strong> The data is not combined with other sources and is used only to see which pages are read. Legal basis: legitimate interest. The statistics are kept until deleted; database backups for 14 days.</li>
+      <li><strong>No tracking pixels, no advertising.</strong> (The CertMate Agent software itself is self-hosted and ships zero telemetry.)</li>
       <li><strong>No accounts, no forms, no newsletter</strong> on this site.</li>
     </ul>
     <h2>Cookies &amp; device storage</h2>
     <p>This site sets <strong>no cookies</strong> and stores <strong>nothing</strong> on your device. No cookie-consent banner is required.</p>
+    <p>The statistics script only reads one <code>localStorage</code> key, <code>umami.disabled</code>: if it is set, nothing is sent. To opt out in this browser, open the developer console on this site and run <code>localStorage.setItem('umami.disabled', '1')</code>.</p>
     <h2>Processors &amp; international transfers</h2>
     <ul>
       <li><strong>GitHub, Inc.</strong> (USA) — static hosting (GitHub Pages).</li>
-      <li><strong>Cloudflare, Inc.</strong> (USA) — authoritative DNS for the domain only; it does not proxy or serve this site's content.</li>
+      <li><strong>Cloudflare, Inc.</strong> (USA) — authoritative DNS for the domain; it does not proxy or serve this site's content. It does forward the statistics requests to the Umami instance, so it sees your IP address in transit.</li>
     </ul>
     <p>Serving the site transfers technical data (such as your IP) to the USA, covered by the providers' DPAs and the EU–US Data Privacy Framework / Standard Contractual Clauses.</p>
     <h2>Your rights</h2>
@@ -40,15 +44,17 @@ const description =
     <h2>Quali dati trattiamo e perché</h2>
     <ul>
       <li><strong>IP e dati basilari della richiesta</strong> trattati in modo transitorio dai fornitori di infrastruttura per erogare e proteggere la pagina. Base giuridica: legittimo interesse (art. 6(1)(f) GDPR).</li>
-      <li><strong>Nessuna analitica</strong>, nessun pixel, nessuna pubblicità. (Il software CertMate Agent è self-hosted e non invia telemetria.)</li>
+      <li><strong>Statistiche delle visite</strong> con Umami, strumento open-source, su un'istanza gestita dall'editore su <code>umami.edge99.net</code>: nessuna società di analytics riceve i dati. Per ogni pagina vista lo script invia indirizzo della pagina (compresa l'eventuale query string, per esempio i parametri UTM), titolo, pagina di provenienza, browser, sistema operativo, tipo di dispositivo, dimensione dello schermo e lingua del browser. Dall'indirizzo IP il server ricava paese, regione e città, e un identificativo di sessione calcolato con un hash non reversibile. <strong>L'indirizzo IP non viene conservato.</strong> I dati non sono incrociati con altre fonti e servono solo a capire quali pagine vengono lette. Base giuridica: legittimo interesse. Le statistiche restano finché non vengono cancellate; i backup del database 14 giorni.</li>
+      <li><strong>Nessun pixel, nessuna pubblicità.</strong> (Il software CertMate Agent è self-hosted e non invia telemetria.)</li>
       <li><strong>Nessun account, modulo o newsletter.</strong></li>
     </ul>
     <h2>Cookie e memoria del dispositivo</h2>
     <p>Il sito <strong>non imposta cookie</strong> e <strong>non memorizza nulla</strong> sul dispositivo. Nessun banner di consenso richiesto.</p>
+    <p>Lo script delle statistiche legge solo la chiave <code>umami.disabled</code> in <code>localStorage</code>: se è presente, non invia nulla. Per escluderti in questo browser, apri la console sviluppatore su questo sito ed esegui <code>localStorage.setItem('umami.disabled', '1')</code>.</p>
     <h2>Responsabili e trasferimenti extra-UE</h2>
     <ul>
       <li><strong>GitHub, Inc.</strong> (USA) — hosting statico (GitHub Pages).</li>
-      <li><strong>Cloudflare, Inc.</strong> (USA) — solo DNS autoritativo del dominio; non fa da proxy né eroga i contenuti di questo sito.</li>
+      <li><strong>Cloudflare, Inc.</strong> (USA) — DNS autoritativo del dominio; non fa da proxy né eroga i contenuti di questo sito. Inoltra però le richieste delle statistiche all'istanza Umami, quindi vede l'indirizzo IP in transito.</li>
     </ul>
     <p>L'erogazione trasferisce dati tecnici (come l'IP) verso gli USA, coperti dagli accordi sul trattamento e dal Data Privacy Framework UE–USA / SCC.</p>
     <h2>I tuoi diritti</h2>
